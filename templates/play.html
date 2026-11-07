@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="play" id="play-app"
+     data-site="{{ active_site }}"
+     data-flag="{{ flag }}"
+     data-id="{{ episode_id }}"
+     data-name="{{ episode_name }}"
+     data-vod="{{ vod_id }}"
+     data-title="{{ title }}"
+     data-pic="{{ pic }}">
+  <div class="player-stage">
+    <video id="video" controls playsinline preload="auto"
+           poster="{{ pic }}" referrerpolicy="no-referrer"></video>
+
+    <div class="player-top">
+      <button class="player-icon" type="button" data-back aria-label="返回">{{ ui.icon("back") }}</button>
+      <div class="player-heading">
+        <span id="player-title">{{ title }}</span>
+        {% if episode_name %}<small>{{ episode_name }}</small>{% endif %}
+      </div>
+      <a class="player-icon" href="/search?wd={{ title|urlencode }}" aria-label="换源">{{ ui.icon("search") }}</a>
+    </div>
+
+    <div class="player-state" id="player-state">正在获取播放地址…</div>
+
+    <div class="next-overlay" id="next-overlay" hidden>
+      <p id="next-text">即将播放下一集</p>
+      <div class="next-actions">
+        <button class="btn btn-primary" id="next-now" type="button">立即播放</button>
+        <button class="btn btn-dark" id="next-cancel" type="button">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="play-sheet">
+    <div class="play-meta">
+      <h1>{{ title }}</h1>
+      {% if episode_name %}<p>{{ episode_name }}</p>{% endif %}
+    </div>
+
+    <div class="play-actions">
+      <button class="chip-btn" id="next-episode" type="button" hidden>下一集</button>
+      <a class="chip-btn" id="switch-source" href="/search?wd={{ title|urlencode }}" hidden>换源</a>
+      <button class="chip-btn" id="fullscreen" type="button">{{ ui.icon("expand") }}全屏</button>
+    </div>
+
+    <section class="episodes play-episodes" id="play-episodes" hidden>
+      <h2 class="section-title">选集</h2>
+      <div class="episode-grid" id="play-episode-grid"></div>
+    </section>
+
+    <p class="play-tips">空格 暂停 · ← → 快进 10 秒 · F 全屏</p>
+  </div>
+</div>
+{% endblock %}

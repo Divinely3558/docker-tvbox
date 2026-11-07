@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}{{ active.name if active else "影迷" }}{% endblock %}
+
+{% block content %}
+<div class="home">
+  {% if error %}
+  <div class="notice" role="alert">
+    <p class="notice-text">{{ error|short_error }}</p>
+    <a class="btn btn-soft" href="/settings">更换配置源</a>
+  </div>
+  {% endif %}
+
+  {% if switched and not error %}
+  <p class="hint">{{ switched }}</p>
+  {% endif %}
+
+  {% if classes %}
+  <nav class="pills" aria-label="分类">
+    {% for item in classes %}
+    {% if item.type_id %}
+    <a class="pill{% if loop.first %} is-active{% endif %}"
+       href="/category?site={{ site.key|urlencode }}&tid={{ item.type_id|urlencode }}">{{ item.type_name }}</a>
+    {% endif %}
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if home and home.list %}
+  <div class="card-grid" id="home-grid">
+    {% for item in home.list %}
+    {{ ui.poster(item, site) }}
+    {% endfor %}
+  </div>
+  {% if first_tid %}
+  <div class="load-sentinel" id="load-sentinel"
+       data-site="{{ site.key }}" data-tid="{{ first_tid }}" data-page="2"></div>
+  {% endif %}
+  {% elif not error %}
+  <div class="empty">
+    <p class="empty-title">这个站点暂时没有返回内容</p>
+    <p class="empty-sub">可以切换数据源，或稍后重试。</p>
+    <button class="btn btn-primary" type="button" data-sheet="site-sheet">切换数据源</button>
+  </div>
+  {% endif %}
+
+  {% if filters %}
+  <button class="fab" type="button" data-sheet="filter-sheet" aria-label="筛选">
+    {{ ui.icon("funnel") }}
+  </button>
+  {% endif %}
+</div>
+
+{% if filters %}
+{{ ui.filter_sheet(filters, site, first_tid) }}
+{% endif %}
+{% endblock %}

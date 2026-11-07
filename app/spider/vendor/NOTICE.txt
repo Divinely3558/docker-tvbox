@@ -1,0 +1,3 @@
+cheerio.min.js
+Source: https://github.com/cheeriojs/cheerio
+License: MIT

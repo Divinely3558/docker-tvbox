@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}搜索{% if wd %} · {{ wd }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="search">
+  {% if not wd %}
+  <div class="hot-card">
+    {% for word in ("隐身的名字", "逐玉", "她的盛焰", "仙逆", "斗罗大陆Ⅱ绝世唐门", "现在就出发", "斗破苍穹年番", "剑来", "扫恶", "斗罗大陆", "庆余年", "凡人修仙传") %}
+    <button class="hot-word" type="button" data-search-word="{{ word }}">{{ word }}</button>
+    {% endfor %}
+  </div>
+
+  <section class="search-history" id="search-history-section" hidden>
+    <div class="section-head">
+      <h2 class="section-title">搜索历史</h2>
+      <button class="text-action" type="button" id="history-clear">{{ ui.icon("trash") }}清空</button>
+    </div>
+    <div class="chips" id="search-history"></div>
+  </section>
+  {% endif %}
+
+  {% if error %}
+  <div class="notice" role="alert">
+    <p class="notice-text">{{ error|short_error }}</p>
+  </div>
+  {% endif %}
+
+  {% if wd and search_sites %}
+  <div id="search-stream" data-wd="{{ wd }}">
+    <p class="hint" id="search-progress">正在搜索 {{ search_sites|length }} 个站点…</p>
+  </div>
+  <script type="application/json" id="search-sites">{{ search_sites|tojson }}</script>
+  <div class="empty" id="search-empty" hidden>
+    <p class="empty-title">没有找到「{{ wd }}」</p>
+    <p class="empty-sub">换个关键词试试，或切换数据源。</p>
+  </div>
+  {% elif wd %}
+  {% set ns = namespace(total=0) %}
+  {% for group in results %}
+  {% if group.list %}
+  {% set ns.total = ns.total + group.list|length %}
+  <section class="result-group">
+    <div class="section-head">
+      <h2 class="section-title">{{ group.name }}</h2>
+      <span class="section-more">{{ group.list|length }}</span>
+    </div>
+    <div class="card-grid">
+      {% for item in group.list %}
+      {{ ui.poster(item, {key: group.site}) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% elif group.error %}
+  <p class="hint">站点「{{ group.name }}」搜索失败：{{ group.error|short_error }}</p>
+  {% endif %}
+  {% endfor %}
+
+  {% if not ns.total %}
+  <div class="empty">
+    <p class="empty-title">没有找到「{{ wd }}」</p>
+    <p class="empty-sub">换个关键词试试，或切换数据源。</p>
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="sheet" id="search-source-sheet" hidden>
+  <div class="sheet-backdrop" data-close-sheet></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="选择搜索站点">
+    <div class="sheet-head">
+      <h2 class="sheet-title">搜索站点</h2>
+      <button class="sheet-action icon-only" type="button" data-close-sheet aria-label="关闭">{{ ui.icon("close") }}</button>
+    </div>
+    <div class="source-grid">
+      <a class="source-cell{% if not (site and site.key) %} is-on{% endif %}"
+         href="/search{% if wd %}?wd={{ wd|urlencode }}{% endif %}">
+        <span class="source-check">{{ ui.icon("check") }}</span>
+        <span class="source-name">全部站点</span>
+        <span class="source-count">{{ sites|length }}</span>
+      </a>
+      {% for item in sites %}
+      <a class="source-cell{% if site and site.key == item.key %} is-on{% endif %}"
+         href="/search?site={{ item.key|urlencode }}{% if wd %}&wd={{ wd|urlencode }}{% endif %}">
+        <span class="source-check">{{ ui.icon("check") }}</span>
+        <span class="source-name">{{ item.name }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

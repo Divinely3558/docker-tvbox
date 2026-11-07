@@ -1,0 +1,11 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
+  <groupId>com.docktvbox</groupId><artifactId>spider-runtime-deps</artifactId><version>1</version><packaging>pom</packaging>
+  <dependencies>
+    <!-- spider jars are compiled against these; org.json must be Android's lenient fork -->
+    <dependency><groupId>com.squareup.okhttp3</groupId><artifactId>okhttp</artifactId><version>4.12.0</version></dependency>
+    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId><version>2.11.0</version></dependency>
+    <dependency><groupId>com.vaadin.external.google</groupId><artifactId>android-json</artifactId><version>0.0.20131108.vaadin1</version></dependency>
+    <dependency><groupId>org.jsoup</groupId><artifactId>jsoup</artifactId><version>1.17.2</version></dependency>
+    <dependency><groupId>com.google.zxing</groupId><artifactId>core</artifactId><version>3.5.3</version></dependency>
+  </dependencies>
+</project>

@@ -1,0 +1,158 @@
+{% macro icon(name, cls="") -%}
+<svg class="icon {{ cls }}" viewBox="0 0 24 24" aria-hidden="true">
+  {%- if name == "search" -%}
+  <circle cx="11" cy="11" r="6.8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+  <path d="M16.2 16.2 21 21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  {%- elif name == "history" -%}
+  <path d="M4 12a8 8 0 1 0 2.5-5.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M3.6 4.4v4.4h4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 7.8V12l3.1 1.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "back" -%}
+  <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "caret" -%}
+  <path d="M6.8 9.6h10.4L12 15.4z" fill="currentColor"/>
+  {%- elif name == "funnel" -%}
+  <path d="M3.8 4.8h16.4l-6.3 7.4v5.6l-3.8 1.9v-7.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  {%- elif name == "home" -%}
+  <path d="M4.2 10.6 12 4l7.8 6.6V20a1 1 0 0 1-1 1h-4.6v-5.7H9.8V21H5.2a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+  {%- elif name == "user" -%}
+  <circle cx="12" cy="8.2" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/>
+  <path d="M4.8 19.6c1.5-3.4 4.1-5 7.2-5s5.7 1.6 7.2 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  {%- elif name == "chevron" -%}
+  <path d="M9.5 5.5 16 12l-6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "database" -%}
+  <path d="M12 3.5 3.6 7.7 12 11.9l8.4-4.2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M3.6 12.1 12 16.3l8.4-4.2M3.6 16.4 12 20.6l8.4-4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  {%- elif name == "star" -%}
+  <path d="M12 3.6 14.6 9l5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  {%- elif name == "star-fill" -%}
+  <path d="M12 3.6 14.6 9l5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z" fill="currentColor"/>
+  {%- elif name == "cloud" -%}
+  <path d="M7.4 18.4h9.3a3.8 3.8 0 0 0 .4-7.6 5.5 5.5 0 0 0-10.6-1.3 4.5 4.5 0 0 0 .9 8.9z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  {%- elif name == "trash" -%}
+  <path d="M4.6 6.9h14.8M9.6 6.9V4.4h4.8v2.5M6.7 6.9 7.7 20h8.6l1-13.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "close" -%}
+  <path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  {%- elif name == "tune" -%}
+  <path d="M4 7.2h7.4M16.2 7.2H20M4 16.8h3.8M12.6 16.8H20M13.4 4.6v5.2M10.2 14.2v5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  {%- elif name == "refresh" -%}
+  <path d="M19.6 12a7.6 7.6 0 1 1-2.3-5.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M19.8 4.4v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "check" -%}
+  <path d="M5 12.4 9.5 17 19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "info" -%}
+  <circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.7"/>
+  <path d="M12 11v5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  <circle cx="12" cy="7.9" r="1.1" fill="currentColor"/>
+  {%- elif name == "expand" -%}
+  <path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- elif name == "play" -%}
+  <path d="M8 5.4v13.2L19 12z" fill="currentColor"/>
+  {%- elif name == "share" -%}
+  <path d="M12 15V4M8.5 7.5 12 4l3.5 3.5M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  {%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro planet() -%}
+<span class="card-planet" aria-hidden="true">
+  <svg viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="14" fill="none" stroke="#dedee2" stroke-width="2.6"/>
+    <ellipse cx="32" cy="33" rx="24" ry="7" fill="none" stroke="#dedee2" stroke-width="2.6" transform="rotate(-18 32 33)"/>
+    <circle cx="52" cy="17" r="2.2" fill="#e6e6ea"/>
+    <circle cx="14" cy="48" r="1.6" fill="#e6e6ea"/>
+  </svg>
+</span>
+{%- endmacro %}
+
+{% macro poster(item, site) -%}
+{% if item.vod_id and 'msearch:' in item.vod_id %}
+<a class="card" href="/search?wd={{ item.vod_name|urlencode }}" title="{{ item.vod_name }}">
+{% else %}
+<a class="card" href="/detail?site={{ site.key|urlencode }}&id={{ item.vod_id|urlencode }}&name={{ item.vod_name|urlencode }}"
+   title="{{ item.vod_name }}">
+{% endif %}
+  <div class="card-media">
+    {{ planet() }}
+    {% if item.vod_pic %}
+    <img src="{{ item.vod_pic }}" alt="{{ item.vod_name }}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
+    {% endif %}
+    <div class="card-shade"></div>
+    <div class="card-overlay">
+      {% if item.vod_remarks %}<span class="card-note">{{ item.vod_remarks }}</span>{% endif %}
+      <span class="card-name">{{ item.vod_name }}</span>
+    </div>
+  </div>
+</a>
+{%- endmacro %}
+
+{% macro poster_grid(items, site) -%}
+<div class="card-grid">
+  {% for item in items %}
+  {{ poster(item, site) }}
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro history_card(item) -%}
+<a class="card" href="/detail?site={{ item.site_key|urlencode }}&id={{ item.vod_id|urlencode }}" title="{{ item.name }}"
+   data-site="{{ item.site_key }}" data-vod="{{ item.vod_id }}">
+  <div class="card-media">
+    {{ planet() }}
+    {% if item.pic %}
+    <img src="{{ item.pic }}" alt="{{ item.name }}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
+    {% endif %}
+    <div class="card-shade"></div>
+    <div class="card-overlay">
+      {% if item.episode %}<span class="card-note">{{ item.episode }}</span>{% endif %}
+      <span class="card-name">{{ item.name }}</span>
+    </div>
+    {% if item.duration and item.position %}
+    <span class="card-progress"><i style="width: {{ ((item.position / item.duration) * 100) | round(0) }}%"></i></span>
+    {% endif %}
+  </div>
+</a>
+{%- endmacro %}
+
+{% macro fav_card(item) -%}
+<a class="card" href="/detail?site={{ item.site_key|urlencode }}&id={{ item.vod_id|urlencode }}" title="{{ item.name }}">
+  <div class="card-media">
+    {{ planet() }}
+    {% if item.pic %}
+    <img src="{{ item.pic }}" alt="{{ item.name }}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
+    {% endif %}
+    <div class="card-shade"></div>
+    <div class="card-overlay">
+      <span class="card-name">{{ item.name }}</span>
+    </div>
+  </div>
+</a>
+{%- endmacro %}
+
+{% macro filter_sheet(groups, site, tid, extend={}) -%}
+<div class="sheet" id="filter-sheet" hidden data-site="{{ site.key }}" data-tid="{{ tid }}">
+  <div class="sheet-backdrop" data-close-sheet></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="筛选">
+    <div class="sheet-head">
+      <h2 class="sheet-title">筛选</h2>
+      <button class="sheet-action icon-only" type="button" data-close-sheet aria-label="关闭">{{ icon("close") }}</button>
+    </div>
+    <div class="filter-groups">
+      {% for group in groups %}
+      <div class="filter-group">
+        <span class="filter-name">{{ group.name }}</span>
+        <div class="filter-options">
+          <button type="button" class="filter-chip{% if not extend.get(group.key) %} is-active{% endif %}"
+                  data-key="{{ group.key }}" data-value="">全部</button>
+          {% for option in group.value %}
+          <button type="button" class="filter-chip{% if extend.get(group.key) == option.v %} is-active{% endif %}"
+                  data-key="{{ group.key }}" data-value="{{ option.v }}">{{ option.n }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="btn btn-primary btn-block" type="button" id="filter-apply">确定</button>
+  </div>
+</div>
+{%- endmacro %}

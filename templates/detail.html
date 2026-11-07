@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}{{ vod.vod_name if vod else "详情" }}{% endblock %}
+
+{% block content %}
+<div class="detail">
+  {% if error %}
+  <div class="notice" role="alert">
+    <p class="notice-text">{{ error|short_error }}</p>
+    <div class="notice-actions">
+      <a class="btn btn-soft" href="/">返回首页</a>
+      {% set wd = request.query_params.get('name', '') %}
+      <a class="btn btn-soft" href="/search{% if wd %}?wd={{ wd|urlencode }}{% endif %}">搜索影片换源</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if vod %}
+  <section class="detail-hero">
+    <div class="detail-poster">
+      {{ ui.planet() }}
+      {% if vod.vod_pic %}
+      <img src="{{ vod.vod_pic }}" alt="{{ vod.vod_name }}" referrerpolicy="no-referrer" onerror="this.remove()">
+      {% endif %}
+    </div>
+
+    <div class="detail-info">
+      <h1 class="detail-title">{{ vod.vod_name }}</h1>
+      <p class="detail-meta">
+        {% if vod.vod_remarks %}<span class="detail-remark">{{ vod.vod_remarks }}</span>{% endif %}
+        {% if vod.vod_year %}<span>{{ vod.vod_year }}</span>{% endif %}
+        {% if vod.vod_area %}<span>{{ vod.vod_area }}</span>{% endif %}
+        {% if vod.type_name %}<span>{{ vod.type_name }}</span>{% endif %}
+      </p>
+      <p class="detail-source">来源 · {{ site.name }}</p>
+    </div>
+  </section>
+
+  <div class="detail-actions">
+    {% if vod.play_lines %}
+    <button class="btn btn-primary" id="play-first"
+            data-site="{{ site.key }}"
+            data-flag="{{ vod.play_lines[0].flag }}"
+            data-url="{{ vod.play_lines[0].episodes[0].url }}"
+            data-name="{{ vod.play_lines[0].episodes[0].name }}"
+            data-vod="{{ vod.vod_id }}"
+            data-title="{{ vod.vod_name }}"
+            data-pic="{{ vod.vod_pic }}">
+      {{ ui.icon("play") }}立即播放
+    </button>
+    {% endif %}
+    <button class="btn btn-soft{% if favorite %} is-on{% endif %}" id="fav-btn"
+            data-site="{{ site.key }}" data-id="{{ vod.vod_id }}"
+            data-name="{{ vod.vod_name }}" data-pic="{{ vod.vod_pic }}"
+            data-on="{{ 'true' if favorite else 'false' }}">
+      {{ ui.icon("star-fill" if favorite else "star") }}<span>{{ "已收藏" if favorite else "收藏" }}</span>
+    </button>
+    {% if search_sites %}
+    <button class="btn btn-soft" id="switch-source" type="button"
+            data-title="{{ vod.vod_name }}">
+      {{ ui.icon("refresh") }}换源
+    </button>
+    {% endif %}
+  </div>
+
+  {% if resume %}
+  <button class="btn btn-resume" id="play-resume"
+          data-site="{{ site.key }}"
+          data-flag="{{ resume.flag }}"
+          data-url="{{ resume.url }}"
+          data-name="{{ resume.episode }}"
+          data-vod="{{ vod.vod_id }}"
+          data-title="{{ vod.vod_name }}"
+          data-pic="{{ vod.vod_pic }}">
+    {{ ui.icon("play") }}继续观看 · {{ resume.episode }}{% if resume.position %} · {{ (resume.position / 60)|int }}:{{ '%02d'|format((resume.position % 60)|int) }}{% endif %}
+  </button>
+  {% endif %}
+
+  {% if vod.vod_content %}
+  <p class="detail-content">{{ vod.vod_content }}</p>
+  {% endif %}
+
+  {% if vod.play_lines %}
+  <section class="episodes">
+    <h2 class="section-title">选集</h2>
+    <div class="line-tabs" role="tablist">
+      {% for line in vod.play_lines %}
+      <button class="line-tab{% if loop.first %} is-active{% endif %}" type="button" role="tab"
+              data-line="{{ loop.index0 }}">{{ line.flag }}</button>
+      {% endfor %}
+    </div>
+
+    {% for line in vod.play_lines %}
+    <div class="episode-grid" data-line="{{ loop.index0 }}"{% if not loop.first %} hidden{% endif %}
+         data-site="{{ site.key }}" data-flag="{{ line.flag }}"
+         data-vod="{{ vod.vod_id }}" data-title="{{ vod.vod_name }}" data-pic="{{ vod.vod_pic }}">
+      {% for episode in line.episodes %}
+      <button class="episode" type="button" data-url="{{ episode.url }}" data-name="{{ episode.name }}">{{ episode.name }}</button>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="sheet" id="switch-sheet" hidden>
+  <div class="sheet-backdrop" data-close-sheet></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="换源">
+    <div class="sheet-head">
+      <h2 class="sheet-title">换源</h2>
+      <button class="sheet-action icon-only" type="button" data-close-sheet aria-label="关闭">{{ ui.icon("close") }}</button>
+    </div>
+    <p class="hint" id="switch-progress">正在搜索其他站点…</p>
+    <div class="chips" id="switch-filters">
+      <button class="filter-chip is-active" type="button" data-site-filter="">全部</button>
+    </div>
+    <div class="switch-list" id="switch-list"></div>
+    <div id="switch-more-wrap"></div>
+  </div>
+</div>
+{% if search_sites %}
+<script type="application/json" id="switch-sites">{{ search_sites|tojson }}</script>
+{% endif %}
+{% endblock %}

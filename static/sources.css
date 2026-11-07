@@ -1,0 +1,49 @@
+/* 订阅数据源弹层里的添加 / 删除控件 */
+
+.source-item { position: relative; }
+.source-item .source-cell { width: 100%; }
+
+.source-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin: 10px 0 2px;
+  padding: 11px 12px;
+  border: 1px dashed rgba(172, 92, 255, 0.4);
+  border-radius: 10px;
+  background: transparent;
+  color: #ac5cff;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.source-add:hover { background: #f5edff; border-color: #ac5cff; }
+.source-add-plus { font-size: 16px; font-weight: 600; line-height: 1; }
+
+.source-del {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #9a9aa2;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+}
+.source-del:hover { color: #e5484d; }
+
+#source-add-form .field,
+#source-auth-form .field { margin-bottom: 10px; }
+#source-auth-hint,
+#source-add-hint { margin: 8px 2px 0; color: #8b3ddb; }

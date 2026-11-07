@@ -1,0 +1,39 @@
+# ===== 本地保留但绝不上传 =====
+# references/ 参考资料、样例、笔记（本地保留）
+references/
+# .text/ 临时文件目录
+.text/
+# 参考 APK（建议移入 references/，*.apk 规则兜底）
+*.apk
+
+# ===== 密钥与环境变量（严禁上传）=====
+.env
+.env.*
+!.env.example
+
+# ===== 运行时数据（SQLite / 缓存 / jar / ARM 运行时）=====
+data/
+.spider/
+
+# ===== Python =====
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv
+.ruff_cache/
+
+# ===== 日志 =====
+*.log
+hs_err_pid*.log
+
+# ===== IDE / 工具 =====
+.idea/
+.vscode/
+.trae-html-share-packages/
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db

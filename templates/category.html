@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}{{ active.name if active else "分类" }}{% endblock %}
+
+{% block content %}
+<div class="category">
+  {% if error %}
+  <div class="notice" role="alert">
+    <p class="notice-text">{{ error|short_error }}</p>
+    <a class="btn btn-soft" href="/settings">更换配置源</a>
+  </div>
+  {% endif %}
+
+  {% if classes %}
+  <nav class="pills" aria-label="分类">
+    {% for item in classes %}
+    {% if item.type_id %}
+    <a class="pill{% if item.type_id|string == tid %} is-active{% endif %}"
+       href="/category?site={{ site.key|urlencode }}&tid={{ item.type_id|urlencode }}">{{ item.type_name }}</a>
+    {% endif %}
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if items %}
+  <div class="card-grid" id="result-grid">
+    {% for item in items %}
+    {{ ui.poster(item, site) }}
+    {% endfor %}
+  </div>
+  <div class="load-sentinel" id="load-sentinel"
+       data-site="{{ site.key }}" data-tid="{{ tid }}" data-page="{{ page_no + 1 }}"></div>
+  {% elif not error %}
+  <div class="empty">
+    <p class="empty-title">这个分类还没有内容</p>
+    <p class="empty-sub">换一个分类，或稍后重试。</p>
+  </div>
+  {% endif %}
+
+  {% if filters %}
+  <button class="fab" type="button" data-sheet="filter-sheet" aria-label="筛选">
+    {{ ui.icon("funnel") }}
+  </button>
+  {% endif %}
+</div>
+
+{% if filters %}
+{{ ui.filter_sheet(filters, site, tid, extend) }}
+{% endif %}
+{% endblock %}

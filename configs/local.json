@@ -1,0 +1,69 @@
+{
+  "notice": "本地示例配置，仅用于验证解析与页面展示，不包含任何真实内容源。",
+  "sites": [
+    {
+      "key": "json_list",
+      "name": "直连·列表模式",
+      "type": 0,
+      "api": "https://example.com/api.php/provide/vod",
+      "searchable": true,
+      "quickSearch": true,
+      "filterable": false
+    },
+    {
+      "key": "json_detail",
+      "name": "直连·详情模式",
+      "type": 1,
+      "api": "https://example.com/api.php/provide/vod2",
+      "searchable": true,
+      "quickSearch": true,
+      "filterable": true
+    },
+    {
+      "key": "json_ext",
+      "name": "远程扩展模式",
+      "type": 4,
+      "api": "https://example.com/api.php/provide/ext",
+      "ext": "",
+      "searchable": true,
+      "quickSearch": true,
+      "filterable": true
+    },
+    {
+      "key": "spider_local",
+      "name": "Spider 示例",
+      "type": 3,
+      "api": "csp_LocalSpider",
+      "searchable": true,
+      "quickSearch": true,
+      "filterable": true
+    },
+    {
+      "key": "js_demo",
+      "name": "JS 示例",
+      "type": 3,
+      "api": "https://example.com/spider.js",
+      "searchable": true,
+      "quickSearch": true,
+      "filterable": true
+    },
+    {
+      "key": "py_demo",
+      "name": "Python 示例",
+      "type": 3,
+      "api": "https://example.com/spider.py",
+      "searchable": true,
+      "quickSearch": true,
+      "filterable": true
+    }
+  ],
+  "parses": [
+    {
+      "name": "Web 解析",
+      "type": 1,
+      "url": "https://example.com/?url="
+    }
+  ],
+  "flags": ["youku", "qq", "iqiyi"],
+  "lives": []
+}

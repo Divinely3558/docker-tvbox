@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+
+{% block title %}我的{% endblock %}
+
+{% block content %}
+<div class="mine">
+  {% if error %}
+  <div class="notice" role="alert">
+    <p class="notice-text">{{ error }}</p>
+  </div>
+  {% endif %}
+
+  <section class="profile">
+    <div class="profile-logo" aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <rect x="8" y="10" width="48" height="44" rx="12" fill="none" stroke="currentColor" stroke-width="4"/>
+        <path d="M20 8v48M44 8v48" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="26.5" cy="29" r="3.6" fill="currentColor"/>
+        <circle cx="38.5" cy="29" r="3.6" fill="currentColor"/>
+        <path d="M24 43c2.5 2.6 5.2 3.9 8 3.9s5.5-1.3 8-3.9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="profile-text">
+      <h1>影迷</h1>
+      <p>无资源式多功能视频播放器</p>
+    </div>
+  </section>
+
+  <div class="menu-card">
+    <button class="menu-row" type="button" data-sheet="source-sheet">
+      {{ ui.icon("database") }}<span class="menu-label">订阅数据源</span>
+      <span class="menu-value">{{ active.name if active else "未配置" }}</span>{{ ui.icon("chevron", "menu-arrow") }}
+    </button>
+    <button class="menu-row" type="button" data-sheet="history-sheet">
+      {{ ui.icon("history") }}<span class="menu-label">观看历史</span>
+      <span class="menu-value">{{ history|length }} 条</span>{{ ui.icon("chevron", "menu-arrow") }}
+    </button>
+    <button class="menu-row" type="button" data-sheet="fav-sheet">
+      {{ ui.icon("star") }}<span class="menu-label">收藏记录</span>
+      <span class="menu-value">{{ favorites|length }} 部</span>{{ ui.icon("chevron", "menu-arrow") }}
+    </button>
+    <button class="menu-row" type="button" data-sheet="aliyun-sheet">
+      {{ ui.icon("cloud") }}<span class="menu-label">阿里云盘</span>
+      <span class="menu-value">{{ "已配置" if aliyun_token_set else "未配置" }}</span>{{ ui.icon("chevron", "menu-arrow") }}
+    </button>
+    <div class="menu-row is-static">
+      {{ ui.icon("info") }}<span class="menu-label">当前版本</span>
+      <span class="menu-value">v1.0.0</span>
+    </div>
+    <button class="menu-row" type="button" data-sheet="cache-sheet">
+      {{ ui.icon("trash") }}<span class="menu-label">清理缓存</span>{{ ui.icon("chevron", "menu-arrow") }}
+    </button>
+  </div>
+
+  <p class="mine-note">仅实现客户端协议与界面，不内置、不托管、不分发任何影视内容。配置源与播放地址均由使用者自行提供。</p>
+
+  <div class="sheet" id="history-sheet" hidden>
+    <div class="sheet-backdrop" data-close-sheet></div>
+    <div class="sheet-panel sheet-panel-wide" role="dialog" aria-modal="true" aria-label="观看历史">
+      <div class="sheet-head">
+        <h2 class="sheet-title">观看历史</h2>
+        {% if history %}
+        <button class="sheet-action" type="button" id="history-clear-all">{{ ui.icon("trash") }}清空</button>
+        {% endif %}
+      </div>
+      {% if history %}
+      <div class="card-grid sheet-grid" id="history-grid">
+        {% for item in history %}
+        {{ ui.history_card(item) }}
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="sheet-empty">还没有观看记录。播放过的影片会出现在这里。</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="sheet" id="fav-sheet" hidden>
+    <div class="sheet-backdrop" data-close-sheet></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="收藏记录">
+      <div class="sheet-head">
+        <h2 class="sheet-title">收藏记录</h2>
+        <span class="sheet-meta">{{ favorites|length }} 部</span>
+      </div>
+      {% if favorites %}
+      <div class="card-grid sheet-grid">
+        {% for item in favorites %}
+        {{ ui.fav_card(item) }}
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="sheet-empty">还没有收藏。打开详情页点「收藏」即可。</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="sheet" id="aliyun-sheet" hidden>
+    <div class="sheet-backdrop" data-close-sheet></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="阿里云盘">
+      <div class="sheet-head">
+        <h2 class="sheet-title">阿里云盘</h2>
+        <button class="sheet-action icon-only" type="button" data-close-sheet aria-label="关闭">{{ ui.icon("close") }}</button>
+      </div>
+      <p class="sheet-desc">填写 refresh token，用于阿里盘线路获取原画地址。token 只保存在本机数据库。</p>
+      <input class="field" id="ali-token" type="password" autocomplete="off"
+             placeholder="填写 refresh token">
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-block" type="button" data-token="save">保存</button>
+        {% if aliyun_token_set %}
+        <button class="btn btn-soft btn-block" type="button" data-token="clear">清除 token</button>
+        {% endif %}
+      </div>
+      <p class="sheet-desc">当前：{{ aliyun_token or "未填写" }}</p>
+    </div>
+  </div>
+
+  <div class="sheet" id="cache-sheet" hidden>
+    <div class="sheet-backdrop" data-close-sheet></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="清理缓存">
+      <div class="sheet-head">
+        <h2 class="sheet-title">清理缓存</h2>
+        <button class="sheet-action icon-only" type="button" data-close-sheet aria-label="关闭">{{ ui.icon("close") }}</button>
+      </div>
+      <p class="sheet-desc">清理海报图、播放列表和分片缓存，不会删除配置源、收藏与历史。</p>
+      <button class="btn btn-primary btn-block" type="button" id="cache-clear">立即清理</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

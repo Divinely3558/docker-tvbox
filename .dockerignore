@@ -1,0 +1,10 @@
+.venv
+data
+references
+.git
+__pycache__
+*.pyc
+*.log
+*.md
+spider-runtime/build
+spider-runtime/__pycache__
