@@ -5,10 +5,15 @@
 
 {% block content %}
 <div class="home">
+  {% if setup %}
+  <div class="empty">
+    <p class="empty-title">欢迎使用影迷</p>
+    <p class="empty-sub">还没有可用的数据源，请检查 config.json 中的配置。</p>
+  </div>
+  {% else %}
   {% if error %}
   <div class="notice" role="alert">
     <p class="notice-text">{{ error|short_error }}</p>
-    <a class="btn btn-soft" href="/settings">更换配置源</a>
   </div>
   {% endif %}
 
@@ -40,8 +45,7 @@
   {% elif not error %}
   <div class="empty">
     <p class="empty-title">这个站点暂时没有返回内容</p>
-    <p class="empty-sub">可以切换数据源，或稍后重试。</p>
-    <button class="btn btn-primary" type="button" data-sheet="site-sheet">切换数据源</button>
+    <p class="empty-sub">请稍后重试。</p>
   </div>
   {% endif %}
 
@@ -50,9 +54,10 @@
     {{ ui.icon("funnel") }}
   </button>
   {% endif %}
+  {% endif %}
 </div>
 
-{% if filters %}
+{% if not setup and filters %}
 {{ ui.filter_sheet(filters, site, first_tid) }}
 {% endif %}
 {% endblock %}

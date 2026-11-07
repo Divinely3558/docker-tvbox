@@ -17,12 +17,9 @@ FROM python:3.13-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DATA_DIR=/data \
-    CONFIG_FILE=/app/config.json
+    DATA_DIR=/data
 
 WORKDIR /app
-
-RUN pip install --no-cache-dir uv
 
 # node：JS 脚本站点；jre + unzip：csp_ 站点（jar 在运行时用 dex2jar 现场转换）
 # patchelf：加固 jar 的 ARM64 .so 要去掉 Android 专有依赖后才能被 glibc 加载
@@ -33,15 +30,20 @@ RUN apt-get update \
 COPY --from=qemu /usr/bin/qemu-aarch64-static /usr/local/bin/qemu-aarch64-static
 
 COPY pyproject.toml uv.lock ./
-RUN uv pip install --system --no-cache -r pyproject.toml
+# 用 uv 解析并安装依赖，装完就卸载 uv 本身，避免把构建工具留在镜像里。
+RUN pip install --no-cache-dir uv \
+    && uv pip install --system --no-cache -r pyproject.toml \
+    && pip uninstall -y uv \
+    && rm -rf /root/.cache /tmp/*
 
 COPY app ./app
 COPY templates ./templates
 COPY static ./static
-COPY configs ./configs
-COPY config.json ./config.json
 COPY spider-runtime ./spider-runtime
 COPY --from=spider-builder /spider-runtime/build/classes ./spider-runtime/build/classes
+# 加固解包的 -javaagent 与 bootstrap 补丁在 builder 阶段由 build.sh 打包（最终镜像只有 JRE 没有 jar 工具）
+COPY --from=spider-builder /spider-runtime/runner/elfagent.jar ./spider-runtime/runner/elfagent.jar
+COPY --from=spider-builder /spider-runtime/runner/elfpatch.jar ./spider-runtime/runner/elfpatch.jar
 
 RUN mkdir -p /data
 

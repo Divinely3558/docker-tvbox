@@ -16,8 +16,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # 数据目录：SQLite、缓存等可写文件都放这里
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))
 
-# 多源配置文件（由用户维护，只读，不写回）
-CONFIG_FILE = Path(os.getenv("CONFIG_FILE", str(BASE_DIR / "config.json")))
+# 多源配置文件：默认放在数据目录（Docker 内为 /data/config.json）。
+# 仓库与镜像都不携带真实源，首次启动自动生成空模板，由用户自行填写。
+CONFIG_FILE = Path(os.getenv("CONFIG_FILE", str(DATA_DIR / "config.json")))
+CONFIG_TEMPLATE = '{\n  "sources": []\n}\n'
 
 # 媒体代理签名密钥（/media、/hls、/img、/spider 的地址签名）
 # 未配置时每次启动随机生成：避免使用公开弱默认值导致签名可被伪造；
@@ -26,11 +28,17 @@ PROXY_SECRET = os.getenv("PROXY_SECRET", "").strip()
 PROXY_SECRET_RANDOM = not PROXY_SECRET
 if PROXY_SECRET_RANDOM:
     PROXY_SECRET = secrets.token_hex(16)
-# 添加配置源的管理密码：由 Docker 环境变量注入，留空则禁止添加
-SOURCE_PASSWORD = os.getenv("SOURCE_PASSWORD", "").strip()
-
 # 日志级别
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info").lower()
+
+# 轻量模式：默认开启，只维护一个配置源、不提供换源入口，
+# 同时关闭启动预热、后台 jar 预转换与多站并发搜索，尽量少占 CPU/内存。
+# 需要恢复多源全功能时设置 LITE_MODE=0，旧代码路径全部保留。
+LITE_MODE = os.getenv("LITE_MODE", "1").lower() not in {"0", "false", "no"}
+
+# 轻量模式下的搜索站点：默认用配置里的直连 API 站（不启 JVM，占用最低）。
+# 留空则搜索当前站点；找不到该站点时也会自动回落。
+LITE_SEARCH_SITE = os.getenv("LITE_SEARCH_SITE", "量子资源").strip()
 
 # 模板与静态资源目录
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -107,12 +115,13 @@ ARM_ROOTFS_URL = os.getenv(
 ARM_UNPACK_TIMEOUT = float(os.getenv("ARM_UNPACK_TIMEOUT", "180"))
 
 # 首页单站等待上限与整页预算（秒）：坏站点不再让首页等 45 秒
-HOME_TIMEOUT = float(os.getenv("HOME_TIMEOUT", "12"))
+# 单站 20s：spider 冷启动 + 慢上游初始化普遍要 10s+；并发竞速下放大上限不影响体验（最快者胜出）
+HOME_TIMEOUT = float(os.getenv("HOME_TIMEOUT", "20"))
 HOME_BUDGET = float(os.getenv("HOME_BUDGET", "30"))
 
 
 def ensure_dirs() -> None:
-    """确保数据目录存在。"""
+    """确保数据目录存在，并在首次运行时生成空的 config.json 模板。"""
     for path in (
         DATA_DIR,
         SPIDER_DATA_DIR,
@@ -122,3 +131,6 @@ def ensure_dirs() -> None:
         SEGMENT_CACHE_DIR,
     ):
         path.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.exists():
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(CONFIG_TEMPLATE, encoding="utf-8")

@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from . import api, config_loader, content, pages, proxy, store
 from .config_loader import ConfigError
 from .settings import (
+    LITE_MODE,
     LOG_LEVEL,
     PROXY_SECRET_RANDOM,
     STATIC_DIR,
@@ -50,8 +51,9 @@ async def lifespan(_: FastAPI):
             logger.info("默认使用第一个源：%s", sources[0]["name"])
     except ConfigError as exc:
         logger.error("配置源初始化失败：%s", exc)
-    if WARMUP_ENABLED and sources:
+    if WARMUP_ENABLED and not LITE_MODE and sources:
         # 后台预热，不阻塞启动；用户首次搜索时站点已经是热的。
+        # 轻量模式不预热：避免启动时批量拉 JVM、转换 jar 把 CPU 顶满。
         asyncio.create_task(content.warmup())
     yield
     jar_runtime.shutdown()

@@ -8,7 +8,16 @@ x86 的 JVM 无法加载这些 .so，直接调用会报
 这里的做法是统一的、不针对具体站点：用 qemu 跑一个 ARM64 JRE，调用 jar 自带的
 ``com.github.catvod.spider.Init.init(context)``；我们的 ``DexClassLoader`` 桩会在
 native 删除临时文件之前把解密出的内层 dex 复制出来，再用 dex2jar 转成普通 jar。
-之后所有 ``csp_XxxGuard`` 都会落到内层真实类 ``Xxx``（见 Runner 的类名回退）。
+之后所有 ``csp_XxxGuard``/``csp_XxxAmns`` 等壳名都会落到内层真实类 ``Xxx``
+（Runner 侧做最长前缀回退）。
+
+dex2jar 对混淆字节码的误译在两级产物上各修一遍（外层壳与内层真实 spider）：
+
+- fixclass：数据流分析修正 ``new``/``invokespecial <init>`` 指向错误的类
+  （R1/R2），缺构造器时补 synthetic 委托（R3）；
+- AsmFix（host JVM 跑，ASM 实现）：重算 stackmap frames，并把 ``new 抽象类/接口``
+  改指 jar 内唯一具体子类（R4，DEX 允许 new 真实类配 invoke-direct 超类构造，
+  dex2jar 会错翻成 new 超类）。
 """
 
 from __future__ import annotations
@@ -35,14 +44,17 @@ from ..settings import (
     ARM_UNPACK_ENABLED,
     ARM_UNPACK_TIMEOUT,
     D2J_XMX,
+    JAVA_BIN,
     SPIDER_LIB_DIR,
     SPIDER_RUNTIME_CLASSES,
 )
 from .errors import JarError
+from .fixclass import fix_jar
 
 logger = logging.getLogger("docktvbox.jar")
 
 _PREPARE = Path(__file__).resolve().parents[2] / "spider-runtime" / "prepare.sh"
+_D2J_DIR = _PREPARE.parent / "d2j"
 # 这些库只存在于 Android，glibc 环境里没有，加载前必须从 NEEDED 里去掉。
 _ANDROID_ONLY = (
     "liblog.so",
@@ -62,12 +74,25 @@ class GuardUnpackError(JarError):
 
 
 def is_guard_jar(path: Path) -> bool:
+    """加固 jar 判定，覆盖各家加固厂商的命名变体：
+
+    - ``assets/*.guard``：最常见的内层 dex 存放方式（快 path，不读 dex）
+    - 通用特征：任意 ``classes*.dex`` 引用 ``com.github.catvod.spider.DexNative``。
+      DexNative 是加固壳的解密入口（native 或纯 Java 实现都有），正常 spider jar
+      不会引用它；不要求自带 ``assets/*.so``——纯 Java 壳（如 merge 变体）没有
+      native 库， payload 放在 ``assets/*.bin`` 等任意命名里。
+    """
     try:
         with zipfile.ZipFile(path) as archive:
-            return any(
-                name.startswith("assets/") and name.endswith(".guard")
-                for name in archive.namelist()
-            )
+            names = archive.namelist()
+            if any(name.startswith("assets/") and name.endswith(".guard") for name in names):
+                return True
+            for name in names:
+                base = name.rsplit("/", 1)[-1]
+                if base.startswith("classes") and base.endswith(".dex"):
+                    if b"DexNative" in archive.read(name):
+                        return True
+            return False
     except (zipfile.BadZipFile, OSError):
         return False
 
@@ -94,8 +119,14 @@ def unpack(raw: Path, wrapper: Path, target: Path) -> Path:
         work = Path(staging)
         guards = _guard_assets(raw)
         if not guards:
-            raise GuardUnpackError("加固 jar 里没有找到 assets/*.guard")
+            # 纯 Java 壳（merge 变体）没有 assets/*.guard，payload 是任意命名的
+            # assets/*.bin；GuardUnpack 只负责跑 Init.init 并截取 DexClassLoader
+            # 的输入，不依赖 guard 文件名，用占位名跑一次即可。
+            guards = ["payload.dex"]
         patches = _patched_libs(raw, work)
+        # dex2jar 对混淆壳的构造器误指会让 Init.init 一跑就 NoSuchMethodError，
+        # 先修补 wrapper 再合并 assets（修补失败回退原 wrapper，保持旧行为）
+        wrapper = _fix_classes(wrapper, work, "wrapper")
 
         last_error = "未知原因"
         # 一个 jar 里可能有多个 guard：逐个尝试，取第一个能解出内层 dex 的。
@@ -113,6 +144,41 @@ def unpack(raw: Path, wrapper: Path, target: Path) -> Path:
 
 
 # ---- 解包流程 -------------------------------------------------------------
+
+
+def _fix_classes(jar: Path, work: Path, tag: str) -> Path:
+    """修补 dex2jar 输出的 class jar，返回修补后的路径。
+
+    两段：fixclass 用数据流分析修正构造器误指（不修好，壳一跑就
+    NoSuchMethodError）；AsmFix 用 ASM 重算 stackmap frames（不修好，开校验的
+    JVM 直接 VerifyError）。任何一步失败都回退到上一级的产物，保持旧行为。
+    """
+    fixed = work / f"{tag}-fix.jar"
+    try:
+        added = fix_jar(jar, fixed)
+    except Exception as exc:  # noqa: BLE001 - 修补是增强，失败不致命
+        logger.warning("构造器修补失败 %s（沿用原 jar）：%s", tag, exc)
+        return jar
+    out = work / f"{tag}-asm.jar"
+    classpath = os.pathsep.join([str(SPIDER_RUNTIME_CLASSES), str(_D2J_DIR / "*")])
+    try:
+        result = subprocess.run(  # noqa: S603 - 固定类名，参数是内部路径
+            [JAVA_BIN, "-Xmx512m", "-cp", classpath, "com.docktvbox.spider.AsmFix", str(fixed), str(out)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.warning("stackmap 重算失败 %s（沿用构造器修补版）：%s", tag, exc)
+        return fixed
+    if result.returncode != 0 or not out.is_file() or out.stat().st_size == 0:
+        detail = (result.stderr or result.stdout or "")[-200:]
+        logger.warning("stackmap 重算失败 %s（沿用构造器修补版）：%s", tag, detail)
+        return fixed
+    if added:
+        logger.info("dex2jar 产物已修补 %s（补造 %d 个构造器）", tag, added)
+    return out
 
 
 def _guard_assets(wrapper: Path) -> list[str]:
@@ -178,6 +244,19 @@ def _run_unpacker(
         str(rootfs),
         java,
         "-Xmx" + "512m",
+    ]
+    # 有的壳在运行期才把 bionic .so 写到缓存目录再 System.load（assets 预修补覆盖不到）；
+    # agent 织入 Runtime.load0，在 dlopen 前把该文件修成 glibc 可加载。
+    agent = _PREPARE.parent / "runner" / "elfagent.jar"
+    if agent.is_file():
+        asm = _D2J_DIR / "d2j-external-2.4.28.jar"
+        # elfpatch.jar 路径显式传给 agent：agent 类可能被 -cp 上的同名类抢先加载，
+        # 靠 codeSource 推断位置会找错目录
+        cmd.append(f"-javaagent:{agent}={asm}|{agent.with_name('elfpatch.jar')}")
+    cmd += [
+        # wrapper 虽已经过了 fixclass+AsmFix，但个别解析不了的类会被跳过、
+        # 开校验反而会整类加载失败；关掉校验与 Android/主 Runner 行为一致
+        "-Xverify:none",
         "-Dfile.encoding=UTF-8",
         f"-Dspider.data.dir={data_dir}",
         f"-Dspider.jar={jar}",
@@ -211,7 +290,11 @@ def _run_unpacker(
 
 
 def _convert_inner(inner: Path, target: Path, work: Path) -> Path:
-    """内层 dex（通常是 zip 包着 classes.dex）转成 JVM jar。"""
+    """内层 dex（通常是 zip 包着 classes.dex）转成 JVM jar。
+
+    内层 zip 里除 classes.dex 外的条目（assets/*.so、页面等）要合并回产物：
+    spider 会把它们当 classpath 资源用（比如释放 native 库再 System.load）。
+    """
     kind = "dex-zip" if zipfile.is_zipfile(inner) else "raw-dex"
     out = work / "inner"
     out.mkdir(exist_ok=True)
@@ -231,9 +314,28 @@ def _convert_inner(inner: Path, target: Path, work: Path) -> Path:
     if not produced.is_file() or produced.stat().st_size == 0:
         detail = (result.stderr or result.stdout or "")[-200:]
         raise GuardUnpackError(f"内层 dex 转换失败：{detail}")
-    os.replace(produced, target)
+    if kind == "dex-zip":
+        _merge_assets(produced, inner)
+    # 内层同样出自 dex2jar，缓存前先过一遍构造器/stackmap 修补（主 Runner 直接加载它）
+    os.replace(_fix_classes(produced, work, "inner"), target)
     logger.info("加固 jar 已解包 %s -> %s", target.name, _tail(work / "unpack.log")[:120])
     return target
+
+
+def _merge_assets(jar: Path, inner_zip: Path) -> None:
+    """把内层 zip 的非 dex 条目（assets 等）补进转换出的 jar，原地重写。"""
+    merged = jar.with_suffix(".merged.jar")
+    with zipfile.ZipFile(jar) as src, zipfile.ZipFile(inner_zip) as extra, zipfile.ZipFile(
+        merged, "w", zipfile.ZIP_DEFLATED
+    ) as dest:
+        names = set(src.namelist())
+        for item in src.infolist():
+            dest.writestr(item, src.read(item.filename))
+        for item in extra.infolist():
+            if item.filename == "classes.dex" or item.filename in names:
+                continue
+            dest.writestr(item, extra.read(item.filename))
+    os.replace(merged, jar)
 
 
 def _tail(path: Path, limit: int = 300) -> str:
@@ -267,6 +369,7 @@ def patch_elf(raw: Path, out: Path) -> None:
         except OSError:
             pass
     _strip_symbol_versions(out)
+    _rename_chk_symbols(out)
 
 
 def _needed_libs(path: Path) -> list[str]:
@@ -372,6 +475,49 @@ def _elf_sections(data: bytes) -> tuple[dict[str, tuple[int, int]], tuple[int, i
     return sections, dynstr
 
 
+# glibc 2.36 起移除了这些 FORTIFY 符号，bionic 还有、厂商 .so 常引用。
+# 这些 _chk 变体只是在普通函数签名尾部多个长度参数，改指普通函数后
+# 多余的实参按 AAPCS64 调用约定被忽略，语义安全。
+_CHK_SYMBOLS = {
+    b"__memcpy_chk": b"memcpy",
+    b"__memmove_chk": b"memmove",
+    b"__memset_chk": b"memset",
+    b"__strlen_chk": b"strlen",
+    b"__strcpy_chk": b"strcpy",
+    b"__strncpy_chk": b"strncpy",
+    b"__strcat_chk": b"strcat",
+    b"__strncat_chk": b"strncat",
+    # arc4random_buf(buf, n) ≡ getentropy(buf, n)（int 返回值被 void 调用方忽略）
+    b"arc4random_buf": b"getentropy",
+}
+
+
+def _rename_chk_symbols(path: Path) -> None:
+    """把 .dynstr 里的 ``__*_chk`` 符号名原地改写成对应的普通函数名（更短，等长覆盖）。"""
+    data = bytearray(path.read_bytes())
+    _sections, dynstr = _elf_sections(data)
+    if not dynstr:
+        return
+    start, size = dynstr
+    region = bytes(data[start : start + size])
+    touched = False
+    for old, new in _CHK_SYMBOLS.items():
+        # 只替换完整 C 字符串（前后都是 \0），不误伤子串；dynstr 首字节恒为 \0
+        needle = b"\0" + old + b"\0"
+        pos = 0
+        while True:
+            idx = region.find(needle, pos)
+            if idx < 0:
+                break
+            at = start + idx + 1  # 跳过前导 \0
+            data[at : at + len(new)] = new
+            data[at + len(new)] = 0
+            touched = True
+            pos = idx + 1 + len(old)
+    if touched:
+        path.write_bytes(bytes(data))
+
+
 # ---- ARM 运行环境 ---------------------------------------------------------
 
 
@@ -406,11 +552,50 @@ _lock = threading.Lock()
 _ready: tuple[str, str, Path, Path] | None = None
 _failed_at: float = 0.0
 _FAIL_COOLDOWN = 300.0
+_preparing: bool = False
+
+
+def runtime_ready() -> bool:
+    """快速判断 ARM 解包环境是否已就绪（不触发下载，不阻塞）。"""
+    if _ready is not None:
+        return True
+    if _failed_at and time.monotonic() - _failed_at < _FAIL_COOLDOWN:
+        return False
+    return _locate_runtime() is not None
+
+
+def _locate_runtime() -> tuple[str, str, Path, Path] | None:
+    """只检查本地文件，不下载；返回 (qemu, java, rootfs, libs) 或 None。"""
+    qemu = _find_qemu()
+    if not qemu:
+        return None
+    java = _locate("jre", "bin/java")
+    if java is None:
+        return None
+    rootfs_hit = _locate("rootfs", "lib/aarch64-linux-gnu/ld-linux-aarch64.so.1")
+    if rootfs_hit is None:
+        return None
+    rootfs = rootfs_hit.parents["lib/aarch64-linux-gnu/ld-linux-aarch64.so.1".count("/")]
+    _ensure_dns(rootfs)
+    return qemu, str(java), rootfs, _libs_dir(rootfs)
+
+
+def _ensure_dns(rootfs: Path) -> None:
+    """qemu-user 用 rootfs 里的 /etc/resolv.conf 做 DNS；Ubuntu 基础镜像里是空文件，
+    联网型加固壳（运行时下载内层 jar 的变体）会因解析失败拿不到 payload。"""
+    resolv = rootfs / "etc" / "resolv.conf"
+    try:
+        if resolv.is_file() and resolv.stat().st_size > 0:
+            return
+        resolv.parent.mkdir(parents=True, exist_ok=True)
+        resolv.write_text("nameserver 223.5.5.5\nnameserver 8.8.8.8\n", "utf-8")
+    except OSError:
+        pass
 
 
 def _ensure_runtime() -> tuple[str, str, Path, Path] | None:
-    """返回 (qemu, java, rootfs, libs)；首次调用时准备目录与下载。"""
-    global _ready, _failed_at
+    """返回 (qemu, java, rootfs, libs)；已就绪直接返回，未就绪不下载（由 prepare_runtime 后台准备）。"""
+    global _ready
     if _ready is not None:
         return _ready
     if _failed_at and time.monotonic() - _failed_at < _FAIL_COOLDOWN:
@@ -418,8 +603,31 @@ def _ensure_runtime() -> tuple[str, str, Path, Path] | None:
     with _lock:
         if _ready is not None:
             return _ready
-        if _failed_at and time.monotonic() - _failed_at < _FAIL_COOLDOWN:
-            return None
+        located = _locate_runtime()
+        if located is not None:
+            _ready = located
+            logger.info("ARM 解包环境就绪：qemu=%s java=%s", located[0], located[1])
+            return _ready
+        return None
+
+
+def prepare_runtime() -> bool:
+    """在调用线程中准备 ARM 运行时（下载 + 解压）。供预热任务在后台调用。
+
+    返回 True 表示就绪，False 表示失败（冷却期内不再重试）。
+    """
+    global _ready, _failed_at, _preparing
+    if _ready is not None:
+        return True
+    if _failed_at and time.monotonic() - _failed_at < _FAIL_COOLDOWN:
+        return False
+    with _lock:
+        if _ready is not None:
+            return True
+        if _preparing:
+            return False
+        _preparing = True
+    try:
         try:
             qemu = _find_qemu()
             java = _ensure_file("jre", ARM_JRE_URL, "bin/java")
@@ -427,14 +635,52 @@ def _ensure_runtime() -> tuple[str, str, Path, Path] | None:
         except GuardUnpackError as exc:
             logger.warning("ARM 解包环境准备失败：%s", exc)
             _failed_at = time.monotonic()
-            return None
+            return False
         if not qemu or java is None or rootfs is None:
             logger.warning("ARM 解包环境不完整：qemu=%s java=%s rootfs=%s", qemu, java, rootfs)
             _failed_at = time.monotonic()
-            return None
-        _ready = (qemu, str(java), rootfs, _libs_dir(rootfs))
+            return False
+        libs = _libs_dir(rootfs)
+        if not _check_java(qemu, str(java), rootfs, libs):
+            # 缓存的运行时损坏（常见于压缩包只下了一半），清掉让下个冷却周期重下
+            logger.warning("ARM 运行时自检失败，清除损坏缓存，冷却期后重新下载")
+            _discard_runtime()
+            _failed_at = time.monotonic()
+            return False
+        _ready = (qemu, str(java), rootfs, libs)
         logger.info("ARM 解包环境就绪：qemu=%s java=%s", qemu, java)
-        return _ready
+        return True
+    finally:
+        with _lock:
+            _preparing = False
+
+
+def _check_java(qemu: str, java: str, rootfs: Path, libs: Path) -> bool:
+    """在 qemu 下跑一次 java -version，验证 JRE + rootfs 真的能用。"""
+    try:
+        result = subprocess.run(
+            [qemu, "-L", str(rootfs), java, "-version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+            env={**os.environ, "LD_LIBRARY_PATH": str(libs)},
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        logger.warning("ARM java 自检失败：%s", exc)
+        return False
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "")[-200:]
+        logger.warning("ARM java 自检失败：%s", detail)
+        return False
+    return True
+
+
+def _discard_runtime() -> None:
+    """清掉损坏的缓存运行时（jre/rootfs 目录与压缩包），下次冷却期后重新下载。"""
+    for name in ("jre", "rootfs"):
+        shutil.rmtree(ARM_RUNTIME_DIR / name, ignore_errors=True)
+        (ARM_RUNTIME_DIR / f"{name}.tar.gz").unlink(missing_ok=True)
 
 
 def _find_qemu() -> str | None:
@@ -496,11 +742,26 @@ def _download_tree(kind: str, url: str) -> None:
         except (httpx.HTTPError, OSError) as exc:
             raise GuardUnpackError(f"下载 {kind} 失败：{exc}") from exc
     logger.info("解压 ARM 运行时 %s", kind)
-    with tarfile.open(archive) as tar:
-        try:
-            tar.extractall(root, filter="data")
-        except TypeError:
-            tar.extractall(root)
+    # rootfs 内含合法的绝对路径符号链接（如 /etc/alternatives/*），Python 3.13 的
+    # data 过滤器会抛 AbsoluteLinkError；tar 过滤器允许绝对链接但仍阻止路径穿越。
+    # 解压到临时目录再原子替换，避免中断残留半个 rootfs 被误判为可用。
+    tmp = ARM_RUNTIME_DIR / f".{kind}-extract"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    try:
+        with tarfile.open(archive) as tar:
+            try:
+                tar.extractall(tmp, filter="tar")
+            except TypeError:
+                tar.extractall(tmp)
+    except (tarfile.TarError, EOFError, OSError) as exc:
+        # 压缩包损坏：删掉，下次冷却期后重新下载
+        archive.unlink(missing_ok=True)
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(root, ignore_errors=True)
+        raise GuardUnpackError(f"解压 {kind} 失败（已删除损坏的压缩包，将重新下载）：{exc}") from exc
+    shutil.rmtree(root, ignore_errors=True)
+    os.replace(tmp, root)
 
 
 def _download(url: str, target: Path) -> None:

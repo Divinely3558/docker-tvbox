@@ -1,22 +1,25 @@
 # docker-tvbox（影迷网页版）
 
-**最新版本：v1.0.0**
+**最新版本：v1.1.0**
 
-TVBox 配置源的网页版聚合播放器：一个 Docker 镜像跑完整套服务，浏览器打开即用，PC 与手机自适应。复刻影迷 v2.6.5 APK 的交互与三爬虫运行时，无需安装任何 App。
+TVBox 配置源的网页版播放器：一个 Docker 镜像跑完整套服务，浏览器打开即用，PC 与手机自适应。复刻影迷 v2.6.5 APK 的交互与三爬虫运行时，无需安装任何 App。
+
+当前版本以**单源轻量**为目标：只维护一份配置源，屏蔽所有换源入口，关闭启动预热与整源 jar 预转换，把 CPU 与内存占用压到最低。仓库与镜像都不携带任何真实源，`config.json` 为空模板，由使用者自行填写。
 
 ## 功能特性
 
-- **多配置源聚合**：`config.json` 定义多个订阅源，网页端一键切换，切换结果存 SQLite，不回写配置文件（支持只读挂载）
+- **单源轻量模式**：默认只加载一份配置源，不提供网页换源/多源切换入口；启动不预热，jar 按需转换，空闲时常驻 JVM 最少
+- **低占用搜索**：搜索固定走配置内的直连 API 站（默认 `量子资源`，零 JVM），可通过 `LITE_SEARCH_SITE` 调整
 - **三爬虫运行时统一适配**：
   - Java jar spider（dex2jar 现场转换 + 常驻 Runner 进程池）
   - drpy / cat 系 JS spider（Node 桥接）
   - csp\_\* Python spider（原生桥接协议）
-- **加固 jar 统一解包**：qemu + ARM64 JRE 运行 jar 自带 `Init.init()` 完成 dex 解密，缓存为普通 jar，新源零适配
+- **加固 jar 统一解包**：qemu + ARM64 JRE 运行 jar 自带 `Init.init()` 完成 dex 解密，缓存为普通 jar
 - **全链路播放**：首页 / 分类 / 详情 / 搜索 / 播放，支持 HLS（hls.js）、直链、本地代理与解析器
 - **媒体代理**：签名 URL 防滥用，HLS 分片与海报落盘缓存，支持 Range 拖动
-- **站点健康度**：熔断、超时预算、失效站点自动降权与切换
+- **站点健康度**：熔断、超时预算、失效站点自动降权
 - **用户数据**：观看历史、收藏、搜索历史（服务端 SQLite + 浏览器本地）
-- **管理管控**：网页添加/删除配置源由 `SOURCE_PASSWORD` 环境变量控制
+- **旧多源代码归档**：多源管理与换源实现保留在 `olddata/`，不再参与构建，方便后续继续适配
 
 ## 快速开始（Docker Compose，推荐）
 
@@ -27,16 +30,32 @@ git clone https://gitee.com/Portly6152/docker-tvbox.git
 cd docker-tvbox
 ```
 
-配置管理密码（用于网页添加配置源；不需要该功能可跳过）：
-
-```bash
-cp .env.example .env 2>/dev/null || echo "SOURCE_PASSWORD=你的密码" > .env
-```
-
 构建并启动：
 
 ```bash
 docker compose up -d --build
+```
+
+首次启动会在 `./data` 自动生成空的 `config.json`：
+
+```bash
+./data/config.json
+```
+
+编辑该文件并填入自己的源（`sources` 数组，第一个为默认源）：
+
+```json
+{
+  "sources": [
+    { "name": "我的源", "url": "https://example.com/tvbox.json" }
+  ]
+}
+```
+
+保存后重启容器生效：
+
+```bash
+docker compose restart
 ```
 
 访问：
@@ -45,7 +64,7 @@ docker compose up -d --build
 http://127.0.0.1:8080
 ```
 
-数据（SQLite、jar 缓存、ARM 运行时）持久化在 `./data` 目录，删除容器不丢数据。
+数据（SQLite、配置、jar 缓存、ARM 运行时）持久化在 `./data` 目录，删除容器不丢数据。
 
 ## 本地开发
 
@@ -60,15 +79,16 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8787
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `SOURCE_PASSWORD` | 空 | 网页添加/删除配置源的管理密码，留空则关闭该功能 |
+| `LITE_MODE` | `1` | 轻量模式：单源、无换源入口、不预热、不整源预转换；置 `0` 可回到旧的多源逻辑（相关文件在 `olddata/`） |
+| `LITE_SEARCH_SITE` | `量子资源` | 轻量模式搜索使用的站点名；留空则搜索当前站点，找不到时自动回落 |
 | `PROXY_SECRET` | 空 | 媒体代理签名密钥；留空每次启动随机生成（重启后旧代理地址失效） |
 | `LOG_LEVEL` | `info` | 日志级别 |
-| `WARMUP` | `1` | 启动后后台预热脚本与 spider JVM，置 `0` 关闭 |
+| `WARMUP` | `1` | 启动后后台预热脚本与 spider JVM；轻量模式下不生效，置 `0` 关闭 |
 | `ARM_UNPACK` | `1` | 允许 qemu 解包加固 jar，置 `0` 关闭 |
 | `SPIDER_TIMEOUT` | `45` | 单次 spider 调用超时（秒） |
-| `SEARCH_TIMEOUT` | `10` | 多源搜索单站超时（秒） |
+| `SEARCH_TIMEOUT` | `10` | 搜索单站超时（秒） |
 | `DETAIL_TIMEOUT` | `15` | 详情页等待上限（秒） |
-| `HOME_TIMEOUT` / `HOME_BUDGET` | `12` / `30` | 首页单站超时 / 整页预算（秒） |
+| `HOME_TIMEOUT` / `HOME_BUDGET` | `20` / `30` | 首页单站超时 / 整页预算（秒） |
 | `SPIDER_JVM_XMX` | `512m` | 常驻 Runner 堆上限 |
 | `SEGMENT_DISK_MB` / `PIC_CACHE_MB` | `1024` / `128` | 分片 / 海报磁盘缓存上限（MB） |
 | `WEB_CONCURRENCY` | `1` | uvicorn worker 数 |
@@ -77,32 +97,33 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8787
 
 ## 配置源格式
 
-`config.json` 的 `sources` 数组定义订阅源，**数组顺序即网页展示顺序，第一个为默认源**：
+`config.json` 的 `sources` 数组定义订阅源，**数组顺序即加载顺序，第一个为默认源**：
 
 ```json
 {
   "sources": [
-    { "name": "盒子迷", "url": "https://example.com/tvbox.json" },
-    { "name": "本地样例", "file": "configs/local.json" }
+    { "name": "我的源", "url": "https://example.com/tvbox.json" }
   ]
 }
 ```
 
-支持 `url`（远程）或 `file`（本地文件）。配置源返回 HTML 留言页时会给出明确提示，并自动用 okhttp UA 重试。
+支持 `url`（远程）或 `file`（本地文件）。配置文件默认位于数据目录（Docker 内为 `/data/config.json`），可通过 `CONFIG_FILE` 覆盖。
+
+配置源返回 HTML 留言页时会给出明确提示，并自动用 okhttp UA 重试。
 
 ## 目录结构
 
 ```
 app/                FastAPI 后端
-  api/              接口层（内容 / 媒体代理 / 配置源 / 用户数据）
+  api/              接口层（内容 / 媒体代理 / 用户数据）
   sites/            站点驱动（JSON API / jar / JS / Python 统一抽象）
   spider/           Java 与 JS 爬虫运行时、加固解包
 spider-runtime/     JVM Runner、dex2jar、Android 兼容桩
-static/             前端（ES module：js/api、ui、sources、pages/*）
+static/             前端（ES module：js/api、ui、pages/*）
 templates/          Jinja2 页面
-configs/            本地配置样例
-config.json         订阅源配置（只读挂载）
-data/               运行时数据（SQLite / 缓存 / jar，git 已忽略）
+olddata/            已归档的多源管理代码，不参与构建
+config.json         空模板（仓库内不携带真实源）
+data/               运行时数据（SQLite / config.json / 缓存 / jar，git 已忽略）
 ```
 
 ## 技术栈
@@ -110,15 +131,40 @@ data/               运行时数据（SQLite / 缓存 / jar，git 已忽略）
 - 后端：Python 3.13 · FastAPI · Jinja2 · aiosqlite · httpx
 - 爬虫：OpenJDK 17（dex2jar + Runner）· Node.js（JS spider）· qemu-aarch64（加固解包）
 - 前端：原生 ES module · hls.js
-- 部署：Docker 多阶段构建（镜像约 550MB）· docker-compose
+- 部署：Docker 多阶段构建 · docker-compose
 
 ## 安全说明
 
 - `.env`、`data/`（含 SQLite 中的阿里云盘 token）、参考资料目录均已 gitignore，不会进入仓库
 - 媒体代理地址全部 HMAC 签名，内部地址段拒绝代理（防 SSRF）
-- 请勿将包含真实 token 的 `data/` 目录提交到任何远程仓库
+- 请勿将包含真实 token 或真实源地址的 `data/` 目录提交到任何远程仓库
 
 ## 更新日志
+
+### v1.1.0
+
+**新增**
+
+- 轻量模式 `LITE_MODE`：单源运行，关闭启动预热、整源 jar 预转换与多站并发搜索
+- 搜索站点可配置 `LITE_SEARCH_SITE`，默认使用零 JVM 的直连 API 站
+- 首次启动自动在数据目录生成空 `config.json` 模板
+- 直连源详情页自动把 m3u8 媒体线路排到最前
+
+**变更**
+
+- 仓库与镜像不再携带真实配置源，由使用者在 `data/config.json` 自行填写
+- Docker 构建移除 `configs/`，安装依赖后卸载 uv 并清理缓存，镜像更小
+- 首页、分类、搜索统一走单站逻辑，减少重复请求
+
+**移除**
+
+- 网页添加/删除配置源与换源入口
+- `SOURCE_PASSWORD` 管理密码相关配置
+- 多源并发搜索与换源弹层
+
+**归档**
+
+- 多源管理代码移至 `olddata/`：配置源接口、前端换源模块、`sources.css`、本地配置样例
 
 ### v1.0.0
 
@@ -127,7 +173,7 @@ data/               运行时数据（SQLite / 缓存 / jar，git 已忽略）
 - TVBox 配置源聚合：多源管理、网页切换、切换结果存 SQLite 支持只读挂载
 - 三爬虫运行时：Java jar（dex2jar + 常驻 Runner）、drpy/cat JS（Node 桥接）、csp\_\* Python（原生桥接）
 - 加固 jar 统一解包：qemu + ARM64 JRE 运行 `Init.init()`，解密缓存复用
-- 首页 / 分类 / 详情 / 搜索 / 播放全链路：首页加载第一个分类与 APK 对齐、无按钮自动加载、全站并发流式搜索按站分组折叠
+- 首页 / 分类 / 详情 / 搜索 / 播放全链路：首页加载第一个分类与 APK 对齐、无按钮自动加载
 - 媒体代理：签名 URL、HLS 分片与海报缓存、Range 支持、防 SSRF
 - 观看历史、收藏、搜索历史、阿里云盘 token 设置
 - 网页添加/删除配置源（`SOURCE_PASSWORD` 管控）

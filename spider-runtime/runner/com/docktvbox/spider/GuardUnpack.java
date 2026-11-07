@@ -13,7 +13,19 @@ import android.util.Log;
  */
 public class GuardUnpack {
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
+        try {
+            run();
+        } catch (Throwable t) {
+            t.printStackTrace(System.out);
+            // 壳的线程池不是 daemon，失败时不显式退出 JVM 会一直挂着
+            System.exit(1);
+        }
+        // 成功也一样：壳可能留下常驻线程（如下载器），拿到 dex 后必须显式退出
+        System.exit(0);
+    }
+
+    private static void run() throws Exception {
         String capture = System.getProperty("spider.capture", "");
         // catvod 的 Init.init 形参是 Application（Android 上 Context 的子类），
         // 传普通 Context 会在 native 侧被强制转换失败。

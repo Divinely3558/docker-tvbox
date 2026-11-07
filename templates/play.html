@@ -22,7 +22,7 @@
         <span id="player-title">{{ title }}</span>
         {% if episode_name %}<small>{{ episode_name }}</small>{% endif %}
       </div>
-      <a class="player-icon" href="/search?wd={{ title|urlencode }}" aria-label="换源">{{ ui.icon("search") }}</a>
+      <a class="player-icon" href="/search?wd={{ title|urlencode }}" aria-label="搜索">{{ ui.icon("search") }}</a>
     </div>
 
     <div class="player-state" id="player-state">正在获取播放地址…</div>
@@ -44,7 +44,6 @@
 
     <div class="play-actions">
       <button class="chip-btn" id="next-episode" type="button" hidden>下一集</button>
-      <a class="chip-btn" id="switch-source" href="/search?wd={{ title|urlencode }}" hidden>换源</a>
       <button class="chip-btn" id="fullscreen" type="button">{{ ui.icon("expand") }}全屏</button>
     </div>
 

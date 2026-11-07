@@ -153,6 +153,11 @@ class _Process:
         except asyncio.TimeoutError as exc:
             self.stop()
             raise JarError(f"spider 调用超时（{timeout:.0f}s）") from exc
+        except asyncio.CancelledError:
+            # 调用方（页面竞速/接口超时）放弃等待时，JVM 里的旧请求仍在执行。
+            # Runner 是串行协议，不杀掉它后续请求会全部排在僵尸调用后面。
+            self.stop()
+            raise
         finally:
             self.pending.pop(req_id, None)
             self.inflight -= 1

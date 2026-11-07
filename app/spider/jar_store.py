@@ -19,7 +19,7 @@ from pathlib import Path
 import httpx
 
 from ..net import to_ascii_url
-from ..settings import D2J_XMX, OKHTTP_UA, SPIDER_JAR_DIR
+from ..settings import ARM_UNPACK_ENABLED, D2J_XMX, OKHTTP_UA, SPIDER_JAR_DIR
 from . import guard_unpack
 from .errors import JarBroken, JarError
 
@@ -98,12 +98,23 @@ def convert(raw: Path, target: Path) -> Path:
                 raise JarError(f"spider jar 转换失败：{(result.stderr or result.stdout)[-240:]}")
         # 加固 jar：外层 XxxGuard 只是壳，真正能用的 spider 在内层 dex 里。
         # 解包成功后直接缓存内层 jar，之后所有 csp_XxxGuard 都走真实类。
-        if guard_unpack.is_guard_jar(raw):
+        guarded = guard_unpack.is_guard_jar(raw)
+        if guarded:
+            if not guard_unpack.runtime_ready():
+                # 运行时未就绪时快速失败，不阻塞请求；由预热任务在后台 prepare_runtime
+                raise JarBroken(
+                    "该配置源使用加固 spider（guard jar），ARM 解包环境未就绪，"
+                    "正在后台准备，请稍后重试或换用非加固站点"
+                )
             logger.info("检测到加固 spider，开始离线解包 %s", raw.name)
             inner = out_dir / f"{raw.stem}-inner.jar"
             guard_unpack.unpack(raw, out_dir / produced, inner)
             produced = inner.name
         os.replace(out_dir / produced, target)
+    if guarded:
+        # 标记必须在转换线程里写：外层 asyncio 协程可能被请求超时取消，
+        # 写在这里才能保证「jar 落盘」与「已解包标记」同生共死。
+        target.with_suffix(".unpacked").write_text("", "utf-8")
     logger.info("spider jar 已转换 %s", target.name)
     return target
 
@@ -113,8 +124,12 @@ def _matches(data: bytes, digest: str) -> bool:
     return bool(algo) and hashlib.new(algo, data).hexdigest() == digest
 
 
-async def download(spider: str, timeout: float = 60.0) -> Path:
-    """下载 spider 原始文件到 data/jars，返回路径（已存在则跳过）。"""
+async def download(spider: str, timeout: float = 15.0) -> Path:
+    """下载 spider 原始文件到 data/jars，返回路径（已存在则跳过）。
+
+    超时按 FongMi/OkHttp 习惯收到 15s（略低于单站上限，让明确错误先露出）：
+    不可达的托管域名必须快速失败，交给熔断与竞速，而不是把请求吊死一分钟。
+    """
     SPIDER_JAR_DIR.mkdir(parents=True, exist_ok=True)
     url, digest = split_qualifier(spider)
     if not url.startswith(("http://", "https://")):
@@ -154,10 +169,70 @@ async def _resolve(url: str) -> Path:
         if not guarded or marker.is_file():
             return target
         target.unlink(missing_ok=True)
-    result = await asyncio.to_thread(convert, raw, target)
-    if guarded:
-        marker.write_text("", "utf-8")
-    return result
+    # 加固标记由 convert() 在线程内写入（协程取消也不会丢）。
+    return await asyncio.to_thread(convert, raw, target)
+
+
+async def reconvert_guard(url: str) -> Path:
+    """运行时才发现是加固 jar（DexNative 初始化失败）时的兜底：
+
+    清掉被误缓存成 wrapper 的转换结果，按加固通道强制重转一次。
+    通用兜底，不依赖任何厂商命名——只要 JVM 抛出 DexNative 错误就触发。
+    """
+    async def _do() -> Path:
+        raw = await download(url)
+        target = SPIDER_JAR_DIR / f"{key_of(url)}.jar"
+        marker = SPIDER_JAR_DIR / f"{key_of(url)}.unpacked"
+        target.unlink(missing_ok=True)
+        marker.unlink(missing_ok=True)
+        if not guard_unpack.is_guard_jar(raw):
+            # 检测器也没认出来：强制按加固处理，让解包器自己验证
+            logger.info("DexNative 报错但特征未命中，强制走加固解包 %s", raw.name)
+        # 加固标记由 _convert_forced_guard 在线程内写入（协程取消也不会丢）。
+        return await asyncio.to_thread(_convert_forced_guard, raw, target)
+
+    task = _inflight.get(url)
+    if task is None:
+        task = asyncio.create_task(_do())
+        _inflight[url] = task
+        task.add_done_callback(lambda _done, key=url: _inflight.pop(key, None))
+    return await task
+
+
+def _convert_forced_guard(raw: Path, target: Path) -> Path:
+    """convert() 的强制加固版：跳过 is_guard_jar 判定，直接解包。"""
+    kind = classify(raw)
+    if kind == "broken":
+        raise JarBroken(f"spider 文件不是 jar/dex（多半是下载到了网页）：{raw.name}")
+    produced = f"{raw.stem}.jar"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=target.parent) as staging:
+        out_dir = Path(staging)
+        if kind == "jvm-jar":
+            shutil.copyfile(raw, out_dir / produced)
+        else:
+            source = _wrap_dex(raw, out_dir) if kind == "raw-dex" else raw
+            result = subprocess.run(  # noqa: S603 - 固定脚本，参数不含用户输入
+                ["bash", str(_PREPARE), "convert", str(Path(source).resolve()), raw.stem],
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "SPIDERS": str(out_dir), "D2J_XMX": D2J_XMX},
+            )
+            if not (out_dir / produced).is_file():
+                raise JarError(f"spider jar 转换失败：{(result.stderr or result.stdout)[-240:]}")
+        if not guard_unpack.runtime_ready():
+            raise JarBroken(
+                "该配置源使用加固 spider（guard jar），ARM 解包环境未就绪，"
+                "正在后台准备，请稍后重试或换用非加固站点"
+            )
+        inner = out_dir / f"{raw.stem}-inner.jar"
+        guard_unpack.unpack(raw, out_dir / produced, inner)
+        os.replace(inner, target)
+    # 与 convert() 同理：标记在转换线程里写，协程取消也不会丢。
+    target.with_suffix(".unpacked").write_text("", "utf-8")
+    logger.info("加固 spider 已强制重转 %s", target.name)
+    return target
 
 
 _inflight: dict[str, asyncio.Task] = {}
@@ -208,3 +283,20 @@ async def _prewarm_all(refs: list[str]) -> None:
         except (JarError, OSError) as exc:
             _prewarm_seen.discard(ref)
             logger.info("预转换 spider jar 失败 %s：%s", ref, exc)
+
+
+async def prepare_guard_runtime() -> None:
+    """预热加固 jar 解包环境：在后台线程下载 ARM JRE/rootfs，不阻塞请求。"""
+    if not ARM_UNPACK_ENABLED:
+        return
+    if guard_unpack.runtime_ready():
+        return
+    logger.info("后台准备 ARM 解包环境（加固 spider 所需）")
+    try:
+        ok = await asyncio.to_thread(guard_unpack.prepare_runtime)
+        if ok:
+            logger.info("ARM 解包环境已就绪，加固 spider 可正常使用")
+        else:
+            logger.info("ARM 解包环境准备失败，冷却期后重试")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ARM 解包环境准备异常：%s", exc)

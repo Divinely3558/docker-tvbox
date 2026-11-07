@@ -28,10 +28,6 @@
   </section>
 
   <div class="menu-card">
-    <button class="menu-row" type="button" data-sheet="source-sheet">
-      {{ ui.icon("database") }}<span class="menu-label">订阅数据源</span>
-      <span class="menu-value">{{ active.name if active else "未配置" }}</span>{{ ui.icon("chevron", "menu-arrow") }}
-    </button>
     <button class="menu-row" type="button" data-sheet="history-sheet">
       {{ ui.icon("history") }}<span class="menu-label">观看历史</span>
       <span class="menu-value">{{ history|length }} 条</span>{{ ui.icon("chevron", "menu-arrow") }}

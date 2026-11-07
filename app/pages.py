@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from . import content, proxy, store
-from .settings import TEMPLATES_DIR
+from .settings import LITE_SEARCH_SITE, TEMPLATES_DIR
 from .sites import DriverError
 
 router = APIRouter()
@@ -56,6 +56,8 @@ async def _base(page: str) -> dict[str, Any]:
         "nav": NAV,
         "sources": sources,
         "active": active,
+        # 首次使用（零数据源）时页面展示引导设置，而不是报错
+        "setup": not sources,
         "sites": [],
         "site": None,
         "error": "",
@@ -217,12 +219,6 @@ async def detail_page(
                 str(exc) if isinstance(exc, content.ContentError) else f"详情加载失败：{exc}"
             )
             return None
-        current_key = site_cfg.key or site_cfg.api
-        ctx["search_sites"] = [
-            {"key": item.key or item.api, "name": item.title}
-            for item in content.search_candidates(data["sites"], limit=32)
-            if (item.key or item.api) != current_key
-        ]
         ctx["favorite"] = await store.is_favorite(ctx["site"]["key"], id)
         ctx["resume"] = _resume_target(ctx["vod"], await store.get_history(ctx["site"]["key"], id))
         return None
@@ -270,19 +266,11 @@ async def search_page(
     async def fill(ctx: dict[str, Any], data: dict[str, Any]) -> None:
         if not wd:
             return
-        if site:
-            site_cfg = content.pick_site(data["sites"], site)
-            ctx["site"] = content.site_info(site_cfg)
-            items = await content.search(site_cfg, wd, page, data["site_ctx"])
-            ctx["results"] = [
-                {"site": ctx["site"]["key"], "name": site_cfg.title, "list": items}
-            ]
-        else:
-            # 多源搜索改为前端分站点并发，结果随到随显示，避免整页等待最慢的站点。
-            ctx["search_sites"] = [
-                {"key": item.key or item.api, "name": item.title}
-                for item in content.search_candidates(data["sites"])
-            ]
+        # 单站点搜索并服务端直出，不再把全部站点丢给前端并发。
+        site_cfg = content.pick_site(data["sites"], site or (LITE_SEARCH_SITE or None))
+        ctx["site"] = content.site_info(site_cfg)
+        items = await content.search(site_cfg, wd, page, data["site_ctx"])
+        ctx["results"] = [{"site": ctx["site"]["key"], "name": site_cfg.title, "list": items}]
 
     return await _render(
         request,

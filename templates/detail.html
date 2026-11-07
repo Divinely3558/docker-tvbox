@@ -10,8 +10,6 @@
     <p class="notice-text">{{ error|short_error }}</p>
     <div class="notice-actions">
       <a class="btn btn-soft" href="/">返回首页</a>
-      {% set wd = request.query_params.get('name', '') %}
-      <a class="btn btn-soft" href="/search{% if wd %}?wd={{ wd|urlencode }}{% endif %}">搜索影片换源</a>
     </div>
   </div>
   {% endif %}
@@ -56,12 +54,6 @@
             data-on="{{ 'true' if favorite else 'false' }}">
       {{ ui.icon("star-fill" if favorite else "star") }}<span>{{ "已收藏" if favorite else "收藏" }}</span>
     </button>
-    {% if search_sites %}
-    <button class="btn btn-soft" id="switch-source" type="button"
-            data-title="{{ vod.vod_name }}">
-      {{ ui.icon("refresh") }}换源
-    </button>
-    {% endif %}
   </div>
 
   {% if resume %}
@@ -104,23 +96,4 @@
   {% endif %}
   {% endif %}
 </div>
-
-<div class="sheet" id="switch-sheet" hidden>
-  <div class="sheet-backdrop" data-close-sheet></div>
-  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="换源">
-    <div class="sheet-head">
-      <h2 class="sheet-title">换源</h2>
-      <button class="sheet-action icon-only" type="button" data-close-sheet aria-label="关闭">{{ ui.icon("close") }}</button>
-    </div>
-    <p class="hint" id="switch-progress">正在搜索其他站点…</p>
-    <div class="chips" id="switch-filters">
-      <button class="filter-chip is-active" type="button" data-site-filter="">全部</button>
-    </div>
-    <div class="switch-list" id="switch-list"></div>
-    <div id="switch-more-wrap"></div>
-  </div>
-</div>
-{% if search_sites %}
-<script type="application/json" id="switch-sites">{{ search_sites|tojson }}</script>
-{% endif %}
 {% endblock %}

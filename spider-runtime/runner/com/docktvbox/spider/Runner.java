@@ -79,7 +79,7 @@ public class Runner {
         try {
             String jar = req.optString("jar", System.getProperty("spider.jar", ""));
             URLClassLoader loader = loaderFor(jar);
-            String cls = resolveClass(req.optString("api", req.optString("cls", "")), loader);
+            String cls = resolveClass(req.optString("api", req.optString("cls", "")), loader, jar);
             if (cls.isEmpty()) throw new IllegalArgumentException("no api class");
             String method = req.optString("method", "homeContent");
             boolean fresh = req.optBoolean("fresh", false);
@@ -125,17 +125,41 @@ public class Runner {
     }
 
     /** catvod packs spiders as com.github.catvod.spider.X referenced from config as csp_X */
-    private static String resolveClass(String api, ClassLoader loader) {
+    private static String resolveClass(String api, ClassLoader loader, String jar) {
         if (api.isEmpty()) return api;
         String cls = api.contains(".")
                 ? api
                 : "com.github.catvod.spider." + api.substring(api.startsWith("csp_") ? 4 : 0);
-        // 加固 jar 的配置写的是外层 XxxGuard，解包后的内层 jar 只有真实类 Xxx。
-        if (loader != null && cls.endsWith("Guard") && !exists(cls, loader)) {
-            String inner = cls.substring(0, cls.length() - "Guard".length());
-            if (exists(inner, loader)) return inner;
+        if (loader == null || exists(cls, loader)) return cls;
+        // 加固 jar 的配置写的是外层壳名（XxxGuard / XxxAmns / 各家后缀都不同），
+        // 解包后的内层 jar 只有真实类 Xxx。通用回退：反查 jar 里“类名是配置名前缀”
+        // 的最长者，不为任何厂商后缀写死规则。
+        String best = null;
+        for (String name : classesOf(jar)) {
+            if (cls.startsWith(name) && (best == null || name.length() > best.length())) best = name;
         }
-        return cls;
+        return best != null ? best : cls;
+    }
+
+    private static final Map<String, java.util.Set<String>> JAR_CLASSES = new ConcurrentHashMap<>();
+
+    /** jar 里 com.github.catvod.spider 下的顶层类名集合（只在类名回退时扫一次并缓存）。 */
+    private static java.util.Set<String> classesOf(String jar) {
+        return JAR_CLASSES.computeIfAbsent(jar, path -> {
+            java.util.Set<String> names = new java.util.HashSet<>();
+            try (java.util.jar.JarFile jf = new java.util.jar.JarFile(path)) {
+                java.util.Enumeration<java.util.jar.JarEntry> en = jf.entries();
+                while (en.hasMoreElements()) {
+                    String n = en.nextElement().getName();
+                    if (n.startsWith("com/github/catvod/spider/") && n.endsWith(".class") && n.indexOf('$') < 0) {
+                        names.add(n.substring(0, n.length() - ".class".length()).replace('/', '.'));
+                    }
+                }
+            } catch (Throwable ignored) {
+                // jar 读不了就放弃回退，让 Class.forName 报原始错误
+            }
+            return names;
+        });
     }
 
     private static boolean exists(String cls, ClassLoader loader) {
@@ -153,17 +177,24 @@ public class Runner {
      */
     private static void initOrigin(ClassLoader loader, String jar) {
         if (loader == null || !ORIGIN_READY.add(jar)) return;
-        try {
-            Class<?> origin = Class.forName("com.github.catvod.spider.InitOrigin", false, loader);
-            Method init = origin.getMethod("init", Context.class);
-            init.invoke(null, context);
-            Log.d("spider-init", "InitOrigin.init ok for " + jar);
-        } catch (ClassNotFoundException ignored) {
-            // 普通 jar 没有 InitOrigin，保持静默。
-        } catch (Throwable t) {
-            // 只尝试一次：InitOrigin 里可能带联网自检，失败也不该每个请求重试。
-            Throwable cause = t.getCause() == null ? t : t.getCause();
-            Log.d("spider-init", "InitOrigin.init failed for " + jar + ": " + cause);
+        // catvod 框架级入口：有的 spider 不在自己的 init 里初始化框架，而是依赖
+        // App 启动时调过 InitOrigin.init / AwInit.init（AwInit.context() 为空时
+        // 静态块直接 NPE）。存在哪个调哪个，都没有就是普通 jar。
+        for (String fw : new String[]{"InitOrigin", "AwInit"}) {
+            try {
+                Class<?> origin = Class.forName("com.github.catvod.spider." + fw, false, loader);
+                Method init = origin.getMethod("init", Context.class);
+                init.invoke(null, context);
+                Log.d("spider-init", fw + ".init ok for " + jar);
+            } catch (ClassNotFoundException ignored) {
+                // 普通 jar 没有这些类，保持静默。
+            } catch (NoSuchMethodException ignored) {
+                // 该类存在但没有 init(Context)，跳过。
+            } catch (Throwable t) {
+                // 只尝试一次：框架 init 里可能带联网自检，失败也不该每个请求重试。
+                Throwable cause = t.getCause() == null ? t : t.getCause();
+                Log.d("spider-init", fw + ".init failed for " + jar + ": " + cause);
+            }
         }
     }
 

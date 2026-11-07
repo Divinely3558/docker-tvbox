@@ -34,10 +34,6 @@ export function initPlay() {
   const vodId = app.dataset.vod;
   const title = app.dataset.title;
   const pic = app.dataset.pic;
-  const switchLink = document.getElementById("switch-source");
-  const showSwitch = () => {
-    if (switchLink && title) switchLink.hidden = false;
-  };
 
   let hls = null;
   let lastSaved = 0;
@@ -47,7 +43,6 @@ export function initPlay() {
     stateEl.hidden = false;
     stateEl.textContent = message;
     if (withRetry) {
-      showSwitch();
       const button = document.createElement("button");
       button.className = "btn btn-dark";
       button.type = "button";
@@ -132,7 +127,6 @@ export function initPlay() {
             }
             if (playDataFromCache && retryFresh()) return;
             setState("播放失败：媒体流不可用或已失效", true);
-            showSwitch();
             hls.destroy();
             hls = null;
           });
@@ -325,14 +319,12 @@ export function initPlay() {
   function applyPlayData(data) {
     if (data.kind === "parse") {
       setState("该地址需要网页解析插件，当前版本暂不支持。可在详情页切换其它线路。");
-      showSwitch();
       return;
     }
     const proxied = data.url || data.stream;
     const url = data.direct || proxied;
     if (!url) {
       setState("没有拿到播放地址，请换一个线路。");
-      showSwitch();
       return;
     }
     attach(url, data.direct ? proxied : "");

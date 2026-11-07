@@ -39,3 +39,6 @@ hs_err_pid*.log
 # ===== 操作系统 =====
 .DS_Store
 Thumbs.db
+
+# build.sh 产出的 javaagent 打包产物
+spider-runtime/runner/*.jar

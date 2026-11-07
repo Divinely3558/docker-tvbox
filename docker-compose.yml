@@ -6,11 +6,8 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
-      - ./config.json:/app/config.json:ro
     environment:
       TZ: Asia/Shanghai
-      # 添加/删除配置源时需要输入的管理密码；留空则关闭该功能
-      SOURCE_PASSWORD: ${SOURCE_PASSWORD:-}
     restart: unless-stopped
     # Runner 与 dex2jar 需要额外堆外内存
     mem_limit: 2g

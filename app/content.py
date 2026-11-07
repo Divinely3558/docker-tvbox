@@ -24,6 +24,7 @@ from .settings import (
     DETAIL_TIMEOUT,
     HOME_BUDGET,
     HOME_TIMEOUT,
+    LITE_MODE,
     SEARCH_CACHE_TTL,
     SEARCH_SITE_TIMEOUT,
 )
@@ -73,8 +74,15 @@ def compact_vod(raw: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-def full_vod(raw: dict[str, Any]) -> dict[str, Any]:
-    """详情用的完整 vod（保留未建模字段）。"""
+_MEDIA_RE = re.compile(r"\.(?:m3u8|mp4|flv|mkv|ts)(?:[?#]|$)", re.I)
+
+
+def full_vod(raw: dict[str, Any], prefer_media: bool = False) -> dict[str, Any]:
+    """详情用的完整 vod（保留未建模字段）。
+
+    ``prefer_media`` 用于直连 JSON 站：这类源的线路里可能混有分享页地址，
+    把媒体直链线路排到前面，详情页默认点开就能播。
+    """
     item = dict(raw)
     for field in ("vod_id", "vod_name", "vod_pic"):
         item[field] = _text(raw.get(field))
@@ -84,11 +92,11 @@ def full_vod(raw: dict[str, Any]) -> dict[str, Any]:
     text = re.sub(r"<[^>]+>", "", text)
     text = html.unescape(text).replace("\u00a0", " ")
     item["vod_content"] = re.sub(r"\n{3,}", "\n\n", text).strip()
-    item["play_lines"] = parse_play_lines(raw)
+    item["play_lines"] = parse_play_lines(raw, prefer_media=prefer_media)
     return item
 
 
-def parse_play_lines(raw: dict[str, Any]) -> list[dict[str, Any]]:
+def parse_play_lines(raw: dict[str, Any], prefer_media: bool = False) -> list[dict[str, Any]]:
     """``$$$`` 分线路、``#`` 分集、``$`` 分名称与地址。"""
     froms = [part for part in _text(raw.get("vod_play_from")).split("$$$")]
     groups = _text(raw.get("vod_play_url")).split("$$$")
@@ -106,7 +114,17 @@ def parse_play_lines(raw: dict[str, Any]) -> list[dict[str, Any]]:
             episodes.append({"name": name.strip() or url.strip(), "url": url.strip()})
         if episodes:
             lines.append({"flag": flag, "episodes": episodes})
+    if prefer_media and len(lines) > 1:
+        lines.sort(key=_media_ratio, reverse=True)
     return lines
+
+
+def _media_ratio(line: dict[str, Any]) -> float:
+    episodes = line.get("episodes") or []
+    if not episodes:
+        return 0.0
+    hits = sum(1 for item in episodes if _MEDIA_RE.search(item.get("url") or ""))
+    return hits / len(episodes)
 
 
 async def load_sites(source_id: int | None = None) -> dict[str, Any]:
@@ -153,7 +171,9 @@ async def load_sites(source_id: int | None = None) -> dict[str, Any]:
         base_url=base_url,
         flags=tuple(meta.get("flags") or ()),
     )
-    _prewarm_jars(sites, ctx)
+    if not LITE_MODE:
+        # 轻量模式不做整份配置的 jar 预转换：dex2jar 很吃 CPU，改为用到哪个站点转哪个。
+        _prewarm_jars(sites, ctx)
     return {
         "source": active,
         "sites": sites,
@@ -254,7 +274,7 @@ async def home_with_fallback(
     if preferred is not None:
         ordered.append(preferred)
     for site in sites:
-        if site.supported and site not in ordered:
+        if site.supported and site not in ordered and not health.is_open(site):
             ordered.append(site)
 
     head = ordered[:1]
@@ -262,21 +282,50 @@ async def home_with_fallback(
     sequence = head + [site for site in rest if site.runtime != "spider"] + [
         site for site in rest if site.runtime == "spider"
     ]
+    # 轻量模式只请求当前站点，失败也不并发去试其它站点，避免同时拉起多个 JVM。
+    candidates = sequence[:1 if LITE_MODE else max_tries]
+    if not candidates:
+        raise ContentError("当前配置源没有可用站点，请换一份配置源")
 
+    # 并发竞速：所有候选同时开跑，第一个成功的胜出，坏站点不再按顺序烧预算。
     errors: list[str] = []
     deadline = time.monotonic() + HOME_BUDGET
-    for site in sequence[:max_tries]:
+
+    async def _try(site: SiteConfig) -> dict[str, Any]:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise asyncio.TimeoutError
+        try:
+            return await asyncio.wait_for(home(site, ctx), timeout=min(HOME_TIMEOUT, left))
+        except asyncio.TimeoutError:
+            errors.append(f"{site.title}：加载超时（{HOME_TIMEOUT:.0f} 秒）")
+            raise
+        except Exception as exc:  # noqa: BLE001 - 逐站兜底，坏站点不能拖垮整页
+            errors.append(f"{site.title}：{exc}")
+            raise
+
+    tasks = {asyncio.create_task(_try(site)): site for site in candidates}
+    while tasks:
         left = deadline - time.monotonic()
         if left <= 0:
             errors.append("其余站点：整页加载预算已用完")
             break
-        try:
-            data = await asyncio.wait_for(home(site, ctx), timeout=min(HOME_TIMEOUT, left))
-            return site, data, errors
-        except asyncio.TimeoutError:
-            errors.append(f"{site.title}：加载超时（{HOME_TIMEOUT:.0f} 秒）")
-        except Exception as exc:  # noqa: BLE001 - 逐站兜底，坏站点不能拖垮整页
-            errors.append(f"{site.title}：{exc}")
+        done, _pending = await asyncio.wait(
+            tasks, timeout=left, return_when=asyncio.FIRST_COMPLETED
+        )
+        if not done:
+            errors.append("其余站点：整页加载预算已用完")
+            break
+        for task in done:
+            site = tasks.pop(task)
+            if task.cancelled() or task.exception() is not None:
+                continue
+            # 落选任务不取消：让它们在后台跑完，正好把 Runner/缓存预热
+            for other in tasks:
+                other.add_done_callback(
+                    lambda t: t.exception() if not t.cancelled() else None
+                )
+            return site, task.result(), errors
     raise ContentError("首页内容加载失败：" + "；".join(errors[-3:]))
 
 
@@ -308,7 +357,7 @@ async def detail(site: SiteConfig, vod_id: str, ctx: SiteContext | None = None) 
     items = data.get("list") or []
     if not items:
         raise ContentError("详情接口没有返回内容，可能是影片已下线")
-    return full_vod(items[0])
+    return full_vod(items[0], prefer_media=site.type in {0, 1})
 
 
 # 站点搜索缓存与并发合并：同一站点同一关键词只打一次上游。
@@ -432,6 +481,8 @@ async def _warm_site(site: SiteConfig, ctx: SiteContext) -> None:
 
 async def warmup(limit: int = 24) -> None:
     """后台预热脚本下载与 spider JVM 进程，消除首次搜索的冷启动超时。"""
+    # 先准备加固 jar 解包环境（ARM 运行时下载较慢，与脚本预热并行）。
+    asyncio.create_task(jar_store.prepare_guard_runtime())
     try:
         data = await load_sites()
     except Exception as exc:  # noqa: BLE001

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -13,10 +14,11 @@ from pydantic import BaseModel, Field
 from .. import content, health, parses, proxy, store
 from ..content import site_info
 from ..models import SiteConfig
-from ..settings import SEARCH_SITE_TIMEOUT
+from ..settings import HOME_TIMEOUT, LITE_MODE, LITE_SEARCH_SITE, SEARCH_SITE_TIMEOUT
 from ..sites import DriverError, headers_dict
 
 router = APIRouter()
+logger = logging.getLogger("docktvbox.api.content")
 
 
 def source_info(row: dict[str, Any]) -> dict[str, Any]:
@@ -39,13 +41,29 @@ def _driver_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=502, detail=str(exc))
 
 
+def _safe_driver_error(exc: Exception) -> HTTPException:
+    """把非预期异常也转成 502，避免单个站点问题让整页 500。"""
+    if isinstance(exc, (DriverError, content.ContentError, HTTPException)):
+        return exc if isinstance(exc, HTTPException) else _driver_error(exc)
+    logger.warning("内容接口非预期异常：%s", type(exc).__name__, exc_info=exc)
+    return HTTPException(status_code=502, detail=f"内容加载失败：{exc}")
+
+
 @router.get("/api/home")
 async def api_home(site: str | None = Query(default=None)) -> dict[str, Any]:
     ctx, site_cfg = await _context(site)
     try:
-        data = await content.home(site_cfg, ctx["site_ctx"])
-    except (DriverError, content.ContentError) as exc:
-        raise _driver_error(exc) from exc
+        # 与页面路由一致的硬超时：单站卡顿（如失效的直播站）不能挂死接口。
+        data = await asyncio.wait_for(
+            content.home(site_cfg, ctx["site_ctx"]), timeout=HOME_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=502,
+            detail=f"站点「{site_cfg.title}」加载超时（{HOME_TIMEOUT:.0f} 秒），请换源",
+        ) from None
+    except Exception as exc:
+        raise _safe_driver_error(exc) from exc
     return {
         "source": source_info(ctx["source"]),
         "site": site_info(site_cfg),
@@ -89,9 +107,17 @@ async def api_category(
         if not isinstance(extend, dict):
             raise HTTPException(status_code=400, detail="筛选条件必须是对象")
     try:
-        data = await content.category(site_cfg, tid, page, extend, ctx["site_ctx"])
-    except (DriverError, content.ContentError) as exc:
-        raise _driver_error(exc) from exc
+        data = await asyncio.wait_for(
+            content.category(site_cfg, tid, page, extend, ctx["site_ctx"]),
+            timeout=HOME_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=502,
+            detail=f"站点「{site_cfg.title}」分类加载超时（{HOME_TIMEOUT:.0f} 秒），请换源",
+        ) from None
+    except Exception as exc:
+        raise _safe_driver_error(exc) from exc
     return {
         "source": source_info(ctx["source"]),
         "site": site_info(site_cfg),
@@ -109,8 +135,8 @@ async def api_detail(
     ctx, site_cfg = await _context(site)
     try:
         vod = await content.detail(site_cfg, vod_id, ctx["site_ctx"])
-    except (DriverError, content.ContentError) as exc:
-        raise _driver_error(exc) from exc
+    except Exception as exc:
+        raise _safe_driver_error(exc) from exc
     return {
         "source": source_info(ctx["source"]),
         "site": site_info(site_cfg),
@@ -127,8 +153,9 @@ async def api_search(
 ) -> dict[str, Any]:
     ctx = await content.load_sites()
     try:
-        if site:
-            site_cfg = content.pick_site(ctx["sites"], site)
+        # 轻量模式只搜索当前站点：全站并发会同时拉起多个 JVM，CPU/内存不可控。
+        if site or LITE_MODE:
+            site_cfg = content.pick_site(ctx["sites"], site or (LITE_SEARCH_SITE or None))
             try:
                 items = await asyncio.wait_for(
                     content.search(site_cfg, wd, page, ctx["site_ctx"]),
@@ -142,8 +169,8 @@ async def api_search(
             results = [{"site": site_info(site_cfg)["key"], "name": site_cfg.title, "list": items}]
         else:
             results = await content.search_all(ctx["sites"], wd, page, ctx=ctx["site_ctx"])
-    except (DriverError, content.ContentError) as exc:
-        raise _driver_error(exc) from exc
+    except Exception as exc:
+        raise _safe_driver_error(exc) from exc
     return {
         "source": source_info(ctx["source"]),
         "wd": wd,

@@ -26,6 +26,7 @@ import httpx
 
 from ..models import SiteConfig
 from ..settings import OKHTTP_UA, SPIDER_OUT_DIR
+from ..spider import jar_store
 from ..spider.errors import JarError
 from ..spider.jar_runtime import BASE_URL as SERVER_BASE_URL
 from ..spider.jar_runtime import runtime
@@ -102,6 +103,7 @@ class JarSpiderDriver(JsonDriver):
         flag: str = "",
         timeout: float | None = None,
     ) -> Any:
+        ref = jar_ref(self.site, self.ctx)
         try:
             return await runtime.call(
                 jar=await self._jar(),
@@ -114,6 +116,26 @@ class JarSpiderDriver(JsonDriver):
                 timeout=timeout,
             )
         except JarError as exc:
+            # 通用兜底：JVM 抛 DexNative 说明 jar 是加固壳但被当普通 jar 缓存了。
+            # 不依赖任何厂商命名，清缓存走加固解包通道重转一次再重试。
+            if "DexNative" in str(exc) and ref:
+                try:
+                    jar = await jar_store.reconvert_guard(ref)
+                except JarError:
+                    raise DriverError(str(exc)) from exc
+                try:
+                    return await runtime.call(
+                        jar=str(jar),
+                        api=self.site.api.strip(),
+                        ext=await self._extend(),
+                        method=method,
+                        args=args,
+                        params=params,
+                        flag=flag,
+                        timeout=timeout,
+                    )
+                except JarError as retry_exc:
+                    raise DriverError(str(retry_exc)) from retry_exc
             raise DriverError(str(exc)) from exc
 
     # ---- TVBox 接口 -----------------------------------------------
