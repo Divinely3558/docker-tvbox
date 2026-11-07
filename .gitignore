@@ -10,6 +10,8 @@ references/
 .env
 .env.*
 !.env.example
+# 本地工具脚本：ghcr_cleanup.py 内嵌 GitHub token
+ghcr_cleanup.py
 
 # ===== 运行时数据（SQLite / 缓存 / jar / ARM 运行时）=====
 data/
