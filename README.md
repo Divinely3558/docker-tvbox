@@ -4,7 +4,9 @@
 
 TVBox 配置源的网页版播放器：一个 Docker 镜像跑完整套服务，浏览器打开即用，PC 与手机自适应。复刻影迷 v2.6.5 APK 的交互与三爬虫运行时，无需安装任何 App。
 
-当前版本以**单源轻量**为目标：只维护一份配置源，屏蔽所有换源入口，关闭启动预热与整源 jar 预转换，把 CPU 与内存占用压到最低。仓库与镜像都不携带任何真实源，`config.json` 为空模板，由使用者自行填写。
+**本项目仅适配「盒子迷」源（`禁止贩卖`），其它源不在支持范围内。**
+
+当前版本以**单源轻量**为目标：只维护这一份配置源，屏蔽所有换源入口，关闭启动预热与整源 jar 预转换，把 CPU 与内存占用压到最低。仓库与镜像不预置源地址，`config.json` 为空模板，由使用者自行填写。
 
 ## 功能特性
 
@@ -44,15 +46,15 @@ docker compose up -d --build
 }
 ```
 
-编辑该文件，把 `url` 换成自己的源地址：
+编辑该文件，填入盒子迷源地址：
 
 ```json
 {
-  "url": "https://example.com/tvbox.json"
+  "url": "https://盒子迷.top/禁止贩卖"
 }
 ```
 
-也可以写本地文件 `"file": "/data/my-tvbox.json"`。
+本项目只支持这一个源，不需要填写其它地址。也可以写本地文件 `"file": "/data/my-tvbox.json"`。
 
 保存后重启容器生效：
 
@@ -99,15 +101,15 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8787
 
 ## 配置源格式
 
-`config.json` 默认只放一个源，直接写 `url`（远程）或 `file`（本地文件）：
+`config.json` 只放一个源，直接写 `url`：
 
 ```json
 {
-  "url": "https://example.com/tvbox.json"
+  "url": "https://盒子迷.top/禁止贩卖"
 }
 ```
 
-配置默认位于数据目录（Docker 内为 `/data/config.json`），可通过 `CONFIG_FILE` 覆盖。需要写多个源时仍可使用 `sources` 数组（按顺序加载，第一个为默认源），但轻量模式只会使用第一个。
+本项目仅适配「盒子迷」源（`禁止贩卖`），填入其它源不保证可用。配置默认位于数据目录（Docker 内为 `/data/config.json`），可通过 `CONFIG_FILE` 覆盖。旧的 `sources` 数组写法仍然兼容，但只会使用第一个源。
 
 配置源返回 HTML 留言页时会给出明确提示，并自动用 okhttp UA 重试。
 
@@ -122,7 +124,7 @@ spider-runtime/     JVM Runner、dex2jar、Android 兼容桩
 static/             前端（ES module：js/api、ui、pages/*）
 templates/          Jinja2 页面
 olddata/            已归档的多源管理代码，不参与构建
-config.json         空模板（仓库内不携带真实源，只有 url/file 字段）
+config.json         空模板（不预置源地址，只有 url/file 字段）
 data/               运行时数据（SQLite / config.json / 缓存 / jar，git 已忽略）
 ```
 
@@ -137,7 +139,7 @@ data/               运行时数据（SQLite / config.json / 缓存 / jar，git 
 
 - `.env`、`data/`（含 SQLite 中的阿里云盘 token）、参考资料目录均已 gitignore，不会进入仓库
 - 媒体代理地址全部 HMAC 签名，内部地址段拒绝代理（防 SSRF）
-- 请勿将包含真实 token 或真实源地址的 `data/` 目录提交到任何远程仓库
+- 请勿将 `data/` 目录提交到任何远程仓库
 
 ## 更新日志
 
@@ -152,7 +154,7 @@ data/               运行时数据（SQLite / config.json / 缓存 / jar，git 
 
 **变更**
 
-- 仓库与镜像不再携带真实配置源，由使用者在 `data/config.json` 自行填写；配置简化为单个 `url` 或 `file`
+- 仓库与镜像不预置配置源，由使用者在 `data/config.json` 自行填写；配置简化为单个 `url` 或 `file`
 - Docker 构建移除 `configs/`，安装依赖后卸载 uv 并清理缓存，镜像更小
 - 首页、分类、搜索统一走单站逻辑，减少重复请求
 
