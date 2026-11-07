@@ -54,9 +54,12 @@ def load_source_index() -> SourceIndex:
         raw = {"sources": raw}
     if not isinstance(raw, dict):
         raise ConfigError("config.json 根节点必须是对象")
+    # 单源简写：根对象直接写 url/file，等价于 sources 里只有一项
+    if "sources" not in raw and any(key in raw for key in ("url", "file", "name")):
+        raw = {"sources": [raw]}
     index = SourceIndex.model_validate(raw)
-    if not index.sources:
-        raise ConfigError("config.json 里没有任何源，请在 sources 中添加")
+    if not index.sources or not any(entry.url or entry.file for entry in index.sources):
+        raise ConfigError("config.json 里还没有填写源地址，请填写 url 或 file")
     for entry in index.sources:
         if not entry.name:
             entry.name = entry.url or Path(entry.file).name or "未命名源"

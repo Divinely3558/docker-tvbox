@@ -19,7 +19,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "data")))
 # 多源配置文件：默认放在数据目录（Docker 内为 /data/config.json）。
 # 仓库与镜像都不携带真实源，首次启动自动生成空模板，由用户自行填写。
 CONFIG_FILE = Path(os.getenv("CONFIG_FILE", str(DATA_DIR / "config.json")))
-CONFIG_TEMPLATE = '{\n  "sources": []\n}\n'
+CONFIG_TEMPLATE = '{\n  "url": ""\n}\n'
 
 # 媒体代理签名密钥（/media、/hls、/img、/spider 的地址签名）
 # 未配置时每次启动随机生成：避免使用公开弱默认值导致签名可被伪造；

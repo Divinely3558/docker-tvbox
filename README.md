@@ -38,19 +38,21 @@ docker compose up -d --build
 
 首次启动会在 `./data` 自动生成空的 `config.json`：
 
-```bash
-./data/config.json
+```json
+{
+  "url": ""
+}
 ```
 
-编辑该文件并填入自己的源（`sources` 数组，第一个为默认源）：
+编辑该文件，把 `url` 换成自己的源地址：
 
 ```json
 {
-  "sources": [
-    { "name": "我的源", "url": "https://example.com/tvbox.json" }
-  ]
+  "url": "https://example.com/tvbox.json"
 }
 ```
+
+也可以写本地文件 `"file": "/data/my-tvbox.json"`。
 
 保存后重启容器生效：
 
@@ -97,17 +99,15 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8787
 
 ## 配置源格式
 
-`config.json` 的 `sources` 数组定义订阅源，**数组顺序即加载顺序，第一个为默认源**：
+`config.json` 默认只放一个源，直接写 `url`（远程）或 `file`（本地文件）：
 
 ```json
 {
-  "sources": [
-    { "name": "我的源", "url": "https://example.com/tvbox.json" }
-  ]
+  "url": "https://example.com/tvbox.json"
 }
 ```
 
-支持 `url`（远程）或 `file`（本地文件）。配置文件默认位于数据目录（Docker 内为 `/data/config.json`），可通过 `CONFIG_FILE` 覆盖。
+配置默认位于数据目录（Docker 内为 `/data/config.json`），可通过 `CONFIG_FILE` 覆盖。需要写多个源时仍可使用 `sources` 数组（按顺序加载，第一个为默认源），但轻量模式只会使用第一个。
 
 配置源返回 HTML 留言页时会给出明确提示，并自动用 okhttp UA 重试。
 
@@ -122,7 +122,7 @@ spider-runtime/     JVM Runner、dex2jar、Android 兼容桩
 static/             前端（ES module：js/api、ui、pages/*）
 templates/          Jinja2 页面
 olddata/            已归档的多源管理代码，不参与构建
-config.json         空模板（仓库内不携带真实源）
+config.json         空模板（仓库内不携带真实源，只有 url/file 字段）
 data/               运行时数据（SQLite / config.json / 缓存 / jar，git 已忽略）
 ```
 
@@ -152,7 +152,7 @@ data/               运行时数据（SQLite / config.json / 缓存 / jar，git 
 
 **变更**
 
-- 仓库与镜像不再携带真实配置源，由使用者在 `data/config.json` 自行填写
+- 仓库与镜像不再携带真实配置源，由使用者在 `data/config.json` 自行填写；配置简化为单个 `url` 或 `file`
 - Docker 构建移除 `configs/`，安装依赖后卸载 uv 并清理缓存，镜像更小
 - 首页、分类、搜索统一走单站逻辑，减少重复请求
 
