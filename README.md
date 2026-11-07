@@ -9,7 +9,7 @@ TVBox 配置源的网页版播放器：一个 Docker 镜像跑完整套服务，
 ## 功能特性
 
 - **单源轻量模式**：默认只加载一份配置源，不提供网页换源/多源切换入口；启动不预热，jar 按需转换，空闲时常驻 JVM 最少
-- **低占用搜索**：搜索固定走配置内的直连 API 站（默认 `量子资源`，零 JVM），可通过 `LITE_SEARCH_SITE` 调整
+- **低占用搜索**：搜索直接走当前源里的直连 API 站（零 JVM），需要固定站点时用 `LITE_SEARCH_SITE` 指定
 - **三爬虫运行时统一适配**：
   - Java jar spider（dex2jar 现场转换 + 常驻 Runner 进程池）
   - drpy / cat 系 JS spider（Node 桥接）
@@ -80,7 +80,7 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8787
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `LITE_MODE` | `1` | 轻量模式：单源、无换源入口、不预热、不整源预转换；置 `0` 可回到旧的多源逻辑（相关文件在 `olddata/`） |
-| `LITE_SEARCH_SITE` | `量子资源` | 轻量模式搜索使用的站点名；留空则搜索当前站点，找不到时自动回落 |
+| `LITE_SEARCH_SITE` | 空 | 轻量模式搜索使用的站点名；留空则搜索当前源里的第一个可用站点 |
 | `PROXY_SECRET` | 空 | 媒体代理签名密钥；留空每次启动随机生成（重启后旧代理地址失效） |
 | `LOG_LEVEL` | `info` | 日志级别 |
 | `WARMUP` | `1` | 启动后后台预热脚本与 spider JVM；轻量模式下不生效，置 `0` 关闭 |
@@ -146,7 +146,7 @@ data/               运行时数据（SQLite / config.json / 缓存 / jar，git 
 **新增**
 
 - 轻量模式 `LITE_MODE`：单源运行，关闭启动预热、整源 jar 预转换与多站并发搜索
-- 搜索站点可配置 `LITE_SEARCH_SITE`，默认使用零 JVM 的直连 API 站
+- 搜索站点可用 `LITE_SEARCH_SITE` 指定，默认搜索当前源里的第一个可用站点
 - 首次启动自动在数据目录生成空 `config.json` 模板
 - 直连源详情页自动把 m3u8 媒体线路排到最前
 

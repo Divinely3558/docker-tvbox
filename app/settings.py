@@ -36,9 +36,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "info").lower()
 # 需要恢复多源全功能时设置 LITE_MODE=0，旧代码路径全部保留。
 LITE_MODE = os.getenv("LITE_MODE", "1").lower() not in {"0", "false", "no"}
 
-# 轻量模式下的搜索站点：默认用配置里的直连 API 站（不启 JVM，占用最低）。
-# 留空则搜索当前站点；找不到该站点时也会自动回落。
-LITE_SEARCH_SITE = os.getenv("LITE_SEARCH_SITE", "量子资源").strip()
+# 轻量模式下的搜索站点：默认留空，直接搜索当前源里的第一个可用站点。
+# 只有显式设置 LITE_SEARCH_SITE 才按站点名挑选；找不到时自动回落。
+LITE_SEARCH_SITE = os.getenv("LITE_SEARCH_SITE", "").strip()
 
 # 模板与静态资源目录
 TEMPLATES_DIR = BASE_DIR / "templates"
